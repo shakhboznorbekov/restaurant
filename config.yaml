@@ -1,0 +1,9 @@
+base_destination: ~/Documents/github.com/restaurant-backend/
+file_directory: ~/Documents/github.com/restaurant-backend/
+BOT_TOKEN: 1392689751:AAFs0SYgBRn0f3kAZO_27-yBvGaNEjdx7_c
+ChatID: 295434868
+ERROR_BOT_TOKEN: 7058679212:AAHWWUxsbyMj3Ni6mj8gAt6FpSQPi4AK9zI
+ERROR_CHAT_ID:
+  - 6686677183
+  - 7889787878
+  - 5564404963
