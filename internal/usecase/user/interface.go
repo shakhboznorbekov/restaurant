@@ -3,9 +3,8 @@ package user
 import (
 	"context"
 	"github.com/restaurant/internal/entity"
-	//"github.com/restaurant/internal/service/attendance"
-	//"github.com/restaurant/internal/service/service_percentage"
-	//"github.com/restaurant/internal/service/sms"
+	"github.com/restaurant/internal/service/sms"
+
 	"github.com/restaurant/internal/service/user"
 	//"github.com/restaurant/internal/service/waiter"
 	//wwt "github.com/restaurant/internal/service/waiter_work_time"
@@ -24,48 +23,51 @@ type User interface {
 
 	// client
 
-	ClientGetMe(ctx context.Context, id int64) (entity.User, error)
-	ClientUpdateColumn(ctx context.Context, request user.ClientUpdateRequest) error
-	ClientDeleteMe(ctx context.Context) error
+	//ClientGetMe(ctx context.Context, id int64) (entity.User, error)
+	//ClientUpdateColumn(ctx context.Context, request user.ClientUpdateRequest) error
+	//ClientDeleteMe(ctx context.Context) error
 
 	// others
 
 	IsPhoneExists(ctx context.Context, phone string) (bool, error)
+
+	// general get me
+
+	GetMe(ctx context.Context, userID int64) (*user.GetMeResponse, error)
 }
 
+// type Waiter interface {
 //
-//type Waiter interface {
+//		// @admin
 //
-//	// @admin
+//		AdminGetList(ctx context.Context, filter waiter.Filter) ([]waiter.AdminGetList, int, error)
 //
-//	AdminGetList(ctx context.Context, filter waiter.Filter) ([]waiter.AdminGetList, int, error)
+//		// @branch
 //
-//	// @branch
+//		BranchGetList(ctx context.Context, filter waiter.Filter) ([]waiter.BranchGetList, int, error)
+//		BranchGetDetail(ctx context.Context, id int64) (waiter.BranchGetDetail, error)
+//		BranchCreate(ctx context.Context, request waiter.BranchCreateRequest) (waiter.BranchCreateResponse, error)
+//		BranchUpdateAll(ctx context.Context, request waiter.BranchUpdateRequest) error
+//		BranchUpdateColumns(ctx context.Context, request waiter.BranchUpdateRequest) error
+//		BranchDelete(ctx context.Context, id int64) error
+//		BranchUpdateStatus(ctx context.Context, id int64, status string) error
 //
-//	BranchGetList(ctx context.Context, filter waiter.Filter) ([]waiter.BranchGetList, int, error)
-//	BranchGetDetail(ctx context.Context, id int64) (waiter.BranchGetDetail, error)
-//	BranchCreate(ctx context.Context, request waiter.BranchCreateRequest) (waiter.BranchCreateResponse, error)
-//	BranchUpdateAll(ctx context.Context, request waiter.BranchUpdateRequest) error
-//	BranchUpdateColumns(ctx context.Context, request waiter.BranchUpdateRequest) error
-//	BranchDelete(ctx context.Context, id int64) error
-//	BranchUpdateStatus(ctx context.Context, id int64, status string) error
+//		// others
 //
-//	// others
+//		UpdatePassword(ctx context.Context, request waiter.BranchUpdatePassword) error
+//		UpdatePhone(ctx context.Context, request waiter.BranchUpdatePhone) error
 //
-//	UpdatePassword(ctx context.Context, request waiter.BranchUpdatePassword) error
-//	UpdatePhone(ctx context.Context, request waiter.BranchUpdatePhone) error
+//		// @waiter
 //
-//	// @waiter
-//
-//	WaiterGetMe(ctx context.Context) (*waiter.GetMeResponse, error)
-//	WaiterGetPersonalInfo(ctx context.Context) (*waiter.GetPersonalInfoResponse, error)
-//	WaiterUpdatePhoto(ctx context.Context, request waiter.WaiterPhotoUpdateRequest) error
-//}
-//
-//type Sms interface {
-//	SendSMS(ctx context.Context, send sms.Send) error
-//	WaiterCheckSMSCode(ctx context.Context, check sms.Check) (bool, error)
-//}
+//		WaiterGetMe(ctx context.Context) (*waiter.GetMeResponse, error)
+//		WaiterGetPersonalInfo(ctx context.Context) (*waiter.GetPersonalInfoResponse, error)
+//		WaiterUpdatePhoto(ctx context.Context, request waiter.WaiterPhotoUpdateRequest) error
+//	}
+type Sms interface {
+	SendSMS(ctx context.Context, send sms.Send) error
+	WaiterCheckSMSCode(ctx context.Context, check sms.Check) (bool, error)
+}
+
 //
 //type ServicePercentage interface {
 //	AdminGetDetail(ctx context.Context, id int64) (*service_percentage.AdminGetDetail, error)

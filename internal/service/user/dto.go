@@ -1,7 +1,7 @@
 package user
 
 import (
-	"github.com/postgresql-restaurant/internal/pkg/utils"
+	"github.com/restaurant/internal/pkg/utils"
 	"github.com/uptrace/bun"
 	"time"
 )
@@ -18,6 +18,7 @@ type Filter struct {
 }
 
 // @super-admin
+
 type SuperAdminGetList struct {
 	ID    int64   `json:"id"`
 	Name  *string `json:"name"`
@@ -81,7 +82,6 @@ type ClientCreateResponse struct {
 }
 
 type ClientUpdateRequest struct {
-	ID        int64   `json:"id" form:"id"`
 	Name      *string `json:"name" form:"name"`
 	BirthDate *string `json:"birth_date" form:"birth_date"`
 	Gender    *string `json:"gender" form:"gender"`
@@ -177,6 +177,7 @@ type BranchCreateResponse struct {
 }
 
 type UpdatePasswordRequest struct {
+	Phone    string `json:"phone"`
 	Password string `json:"password"`
 	SMSCode  string `json:"sms_code"`
 }
@@ -189,4 +190,26 @@ type FeedBack struct {
 	FullName    *string `json:"full_name"`
 	PhoneNumber *string `json:"phone_number"`
 	Email       *string `json:"email"`
+}
+
+// cashier
+
+type CashierGetMeResponse struct {
+	Id        int64   `json:"id" bun:"id"`
+	Name      *string `json:"name" bun:"name"`
+	Photo     *string `json:"photo" bun:"photo"`
+	Gender    *string `json:"gender" bun:"gender"`
+	BirthDate *string `json:"birth_date" bun:"birth_date"`
+	Phone     *string `json:"phone" bun:"phone"`
+	Address   *string `json:"address" bun:"address"`
+}
+
+type GetMeResponse struct {
+	Id        int64   `json:"id" bun:"id"`
+	Name      *string `json:"name" bun:"name"`
+	Photo     *string `json:"photo" bun:"photo"`
+	Gender    *string `json:"gender" bun:"gender"`
+	BirthDate *string `json:"birth_date" bun:"birth_date"`
+	Phone     *string `json:"phone" bun:"phone"`
+	Address   *string `json:"address" bun:"address"`
 }

@@ -9,6 +9,14 @@ type Service struct {
 	repo Repository
 }
 
+func (s Service) IsWaiterPhoneExists(ctx context.Context, phone string) (bool, error) {
+	return s.repo.IsWaiterPhoneExists(ctx, phone)
+}
+
+func (s Service) IsPhoneExists(ctx context.Context, phone string) (bool, error) {
+	return s.repo.IsPhoneExists(ctx, phone)
+}
+
 // @super-admin
 func (s Service) SuperAdminCreate(ctx context.Context, request SuperAdminCreateRequest) (SuperAdminCreateResponse, error) {
 	return s.repo.SuperAdminCreate(ctx, request)

@@ -1,5 +1,7 @@
 package auth
 
+import "github.com/restaurant/internal/service/device"
+
 type SignInRequest struct {
 	Phone   string        `json:"phone" form:"phone"`
 	SMSCode string        `json:"sms_code" form:"sms_code"`

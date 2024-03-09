@@ -3,12 +3,7 @@ package user
 import (
 	"context"
 	"github.com/pkg/errors"
-	//"golang.org/x/crypto/bcrypt"
-	//"net/http"
-	//"github.com/restaurant/foundation/web"
 	"github.com/restaurant/internal/auth"
-	//"github.com/restaurant/internal/pkg/file"
-	//"github.com/restaurant/internal/service/sms"
 	"github.com/restaurant/internal/service/user"
 	//"github.com/restaurant/internal/service/waiter"
 	//wwt "github.com/restaurant/internal/service/waiter_work_time"
@@ -17,7 +12,7 @@ import (
 
 type UseCase struct {
 	user User
-	//sms               Sms
+	sms  Sms
 	//waiter            Waiter
 	//servicePercentage ServicePercentage
 	//attendance        AttendanceService
@@ -28,8 +23,9 @@ type UseCase struct {
 //	func NewUseCase(user User, sms Sms, waiter Waiter, servicePercentage ServicePercentage, attendance AttendanceService, waiterWorkTime WaiterWorkTimeService, auth *auth.Auth) *UseCase {
 //		return &UseCase{user, sms, waiter, servicePercentage, attendance, waiterWorkTime, auth}
 //	}
-func NewUseCase(user User, auth *auth.Auth) *UseCase {
-	return &UseCase{user, auth}
+
+func NewUseCase(user User, sms Sms, auth *auth.Auth) *UseCase {
+	return &UseCase{user, sms, auth}
 }
 
 // #user
@@ -369,3 +365,15 @@ func (uu UseCase) SuperAdminDeleteUser(ctx context.Context, id int64) error {
 //	}
 //	return uu.waiter.WaiterUpdatePhoto(ctx, request)
 //}
+
+// general get me
+
+func (uu UseCase) GetMe(ctx context.Context, token string) (*user.GetMeResponse, error) {
+
+	claims, err := uu.auth.GetTokenData(token)
+	if err != nil {
+		return nil, err
+	}
+
+	return uu.user.GetMe(ctx, claims.UserId)
+}

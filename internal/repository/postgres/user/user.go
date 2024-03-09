@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/restaurant/foundation/web"
@@ -9,6 +10,8 @@ import (
 	"github.com/restaurant/internal/entity"
 	"github.com/restaurant/internal/pkg/repository/postgresql"
 	"github.com/restaurant/internal/pkg/utils"
+	"github.com/restaurant/internal/repository/postgres"
+	"github.com/restaurant/internal/service/hashing"
 	"github.com/restaurant/internal/service/user"
 	"net/http"
 	"strings"
@@ -84,7 +87,7 @@ func (r Repository) SuperAdminCreate(ctx context.Context, request user.SuperAdmi
 }
 
 func (r Repository) SuperAdminGetList(ctx context.Context, filter user.Filter) ([]user.SuperAdminGetList, int, error) {
-	claims, err := r.CheckClaims(ctx, auth.RoleSuperAdmin)
+	_, err := r.CheckClaims(ctx, auth.RoleSuperAdmin)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -265,4 +268,63 @@ func (r Repository) SuperAdminUpdateColumns(ctx context.Context, request user.Su
 
 func (r Repository) SuperAdminDelete(ctx context.Context, id int64) error {
 	return r.DeleteRow(ctx, "users", id, auth.RoleSuperAdmin)
+}
+
+// others
+
+func (r Repository) IsPhoneExists(ctx context.Context, phone string) (bool, error) {
+	exists, err := r.NewSelect().Table("users").Where("phone = ? and deleted_at IS NULL", phone).Exists(ctx)
+	return exists, errors.Wrap(err, "phone exists error")
+}
+
+func (r Repository) IsWaiterPhoneExists(ctx context.Context, phone string) (bool, error) {
+	exists, err := r.NewSelect().Table("users").Where("phone = ? and deleted_at IS NULL and role = 'WAITER'", phone).Exists(ctx)
+	return exists, errors.Wrap(err, "phone exists error")
+}
+
+func (r Repository) GetMe(ctx context.Context, userID int64) (*user.GetMeResponse, error) {
+
+	query := fmt.Sprintf(`SELECT
+   									u.id,
+   									u.name,
+   									u.photo,
+   									TO_CHAR(u.birth_date, 'DD.MM.YYYY'),
+   									u.phone,
+   									u.address,
+   									u.gender
+								 FROM users u
+								 WHERE
+								     u.id = '%d'
+								   AND
+								     u.deleted_at IS NULL
+								  `, userID)
+
+	var response user.GetMeResponse
+	err := r.QueryRowContext(ctx, query).Scan(
+		&response.Id,
+		&response.Name,
+		&response.Photo,
+		&response.BirthDate,
+		&response.Phone,
+		&response.Address,
+		&response.Gender)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, web.NewRequestError(postgres.ErrNotFound, http.StatusBadRequest)
+	}
+
+	if err != nil {
+		return nil, web.NewRequestError(errors.Wrap(err, "selecting user info"), http.StatusBadRequest)
+	}
+
+	if response.Photo != nil {
+		photo := hashing.GenerateHash(r.ServerBaseUrl, *response.Photo)
+		response.Photo = &photo
+	}
+
+	return &response, nil
+}
+
+func NewRepository(DB *postgresql.Database) *Repository {
+	return &Repository{DB}
 }

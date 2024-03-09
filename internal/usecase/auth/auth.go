@@ -2,13 +2,16 @@ package auth
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/restaurant/internal/auth"
 	"github.com/restaurant/internal/commands"
+	"github.com/restaurant/internal/service/device"
 	"github.com/restaurant/internal/service/sms"
 	"github.com/restaurant/internal/service/user"
 	"golang.org/x/crypto/bcrypt"
+	"net/http"
 )
 
 type UseCase struct {
@@ -48,12 +51,12 @@ func (au UseCase) SignInClient(ctx context.Context, request auth.SignInRequest) 
 		}
 
 		request.Device.UserID = &detail.ID
-		_, err := au.user.Create(ctx, request.Device)
+		_, err = au.user.Create(ctx, request.Device)
 		if err != nil {
 			return "", isNew, err
 		}
 
-		token, err := commands.GenToken(auth.ClaimsAuth{
+		token, err = commands.GenToken(auth.ClaimsAuth{
 			ID:    detail.ID,
 			Roles: *detail.Role,
 		}, "private.pem")
@@ -68,7 +71,7 @@ func (au UseCase) SignInClient(ctx context.Context, request auth.SignInRequest) 
 		}
 
 		request.Device.UserID = &detail.ID
-		_, err := au.device.Create(ctx, request.Device)
+		_, err = au.device.Create(ctx, request.Device)
 		if err != nil {
 			return "", isNew, err
 		}
@@ -157,6 +160,130 @@ func (au UseCase) SignInAdmin(ctx context.Context, request auth.SignInRequest) (
 
 	var token string
 	if exist {
+		detail, err := au.user.GetByPhone(ctx, request.Phone)
+		if err != nil {
+			return "", err
+		}
 
+		if (*detail.Role != auth.RoleSuperAdmin) &&
+			(*detail.Role != auth.RoleAdmin) &&
+			(*detail.Role != auth.RoleBranch) &&
+			(*detail.Role != auth.RoleCashier) {
+			errStr := fmt.Sprintf("you have not permission as %s", *detail.Role)
+			return "" errors.New(errStr)
+		}
+
+		if *detail.Role == auth.RoleAdmin && detail.RestaurantID == nil {
+			return "", errors.New(fmt.Sprintf("role %s doesn't contain restaurant_id", *detail.Role))
+		}
+
+		if *detail.BranchID == auth.RoleBranch && detail.BranchID == nil {
+			return "", errors.New(fmt.Sprintf("role %s doesn't contains branch_id", *detail.BranchID))
+		}
+
+		token, err := commands.GenToken(auth.ClaimsAuth{
+			ID: detail.ID,
+			Roles: *detail.Role,
+			RestaurantID: detail.RestaurantID,
+			BranchID: detail.BranchID,
+		}, "./private.pem")
+		if err != nil {
+			return "", err
+		}
+	} else {
+		return "",errors.New("user does not exists")
 	}
+	return token, nil
+}
+
+func (au UseCase) UpdateMePhone ( ctx context.Context, request auth.SignInRequest)error{
+	exists, err := au.sms.CheckSMSCodeUpdatePhone(ctx, sms.Check{
+		Phone: request.Phone,
+		Code: request.SMSCode,
+	})
+	if err != nil {
+		return err
+	}
+
+	if exists{
+		_, err := au.user.GetByPhone(ctx, request.Phone)
+		if err != nil{
+			return web.NewRequestError(errors.New("this phone was created before"), http.StatusBadRequest)
+		}else if !errors.Is(err, sql.ErrNoRows) {
+			return web.NewRequestError(errors.Wrap(err, "updating phone"), http.StatusInternalServerError)
+		}
+		err = au.user.ClientUpdateMePhone(ctx, request.Phone)
+		if err != nil {
+			return err
+		}
+	} else {
+		return web.NewRequestError(errors.New("sms code not verified"), http.StatusBadRequest)
+	}
+
+	return nil
+}
+
+func (au UseCase) ClientLogOut(ctx context.Context, deviceID string)error{
+	return au.device.Delete(ctx, deviceID)
+}
+
+func(au UseCase) ChangeDeviceLang(ctx context.Context, request device.ChangeDeviceLang) error{
+	return au.device.ChangeDeviceLang(ctx, request)
+}
+
+
+// @waiter
+
+func (au UseCase) WaiterUpdateMePhone(ctx context.Context, request auth.SignInRequest) error {
+	exists, err := au.sms.CheckSMSCodeUpdatePhone(ctx, sms.Check{
+		Phone: request.Phone,
+		Code:  request.SMSCode,
+	})
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		_, err = au.user.GetByPhone(ctx, request.Phone)
+		if err == nil {
+			return web.NewRequestError(errors.New("this phone was created before"), http.StatusBadRequest)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return web.NewRequestError(errors.Wrap(err, "updating phone"), http.StatusInternalServerError)
+		}
+		err = au.user.WaiterUpdateMePhone(ctx, request.Phone)
+		if err != nil {
+			return err
+		}
+	} else {
+		return web.NewRequestError(errors.New("sms code not verified"), http.StatusBadRequest)
+	}
+
+	return nil
+}
+
+func (au UseCase) WaiterUpdatePassword(ctx context.Context, request user.UpdatePasswordRequest) error {
+	exists, err := au.sms.CheckSMSCodeUpdatePhone(ctx, sms.Check{
+		Phone: request.Phone,
+		Code:  request.SMSCode,
+	})
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		detail, err := au.user.GetByPhone(ctx, request.Phone)
+		if err != nil {
+			return web.NewRequestError(err, http.StatusBadRequest)
+		}
+
+		password, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+		err = au.user.WaiterUpdatePassword(ctx, string(password), detail.ID)
+		if err != nil {
+			return err
+		}
+	} else {
+		return web.NewRequestError(errors.New("sms code not verified"), http.StatusBadRequest)
+	}
+
+	return nil
 }

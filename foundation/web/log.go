@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/restaurant/internal/pkg/config"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -66,21 +65,14 @@ func (l *Logger) WriteLog(ctx *Context, data interface{}) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	body, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		return err
-	}
-
-	if len(body) == 0 {
-		body = []byte("nil")
-	}
+	body := ctx.Value("body")
 
 	recordBuffer := []string{
 		fmt.Sprintf("Time: %s", time.Now().Format("02-01-2006 15:04:05")),
 		fmt.Sprintf("URL: %v", ctx.Request.URL),
 		fmt.Sprintf("UserID: %s", id),
 		fmt.Sprintf("Method: %s", ctx.Request.Method),
-		fmt.Sprintf("Request.Body: %s", string(body)),
+		fmt.Sprintf("Request.Body: %v", body),
 		fmt.Sprintf("Useragent: %s", ctx.Request.UserAgent()),
 		fmt.Sprintf("Response.Body: %v", data),
 	}

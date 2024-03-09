@@ -3,10 +3,8 @@ package auth
 import (
 	"context"
 	"github.com/restaurant/internal/entity"
+	"github.com/restaurant/internal/service/device"
 	"github.com/restaurant/internal/service/sms"
-
-	//"github.com/restaurant/internal/service/device"
-	//"github.com/restaurant/internal/service/sms"
 	"github.com/restaurant/internal/service/user"
 )
 

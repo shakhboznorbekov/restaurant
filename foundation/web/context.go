@@ -25,6 +25,7 @@ func NewContext(context *gin.Context, ctx context.Context) *Context {
 }
 
 func (c *Context) Respond(data interface{}, statusCode int) error {
+
 	if statusCode >= 400 {
 		logger := NewLogger("logs")
 
@@ -58,6 +59,7 @@ func (c *Context) Respond(data interface{}, statusCode int) error {
 }
 
 func (c *Context) RespondError(err error) error {
+
 	// If the error was of the type *Error, the handler has
 	// a specific status code and error to return.
 
@@ -111,6 +113,8 @@ func (c *Context) BindFunc(data interface{}, requiredFields ...string) error {
 	if err != nil {
 		return NewRequestError(errors.Wrap(err, "parsing request data"), http.StatusBadRequest)
 	}
+
+	c.Set("body", data)
 
 	err = validateStruct(data, requiredFields...)
 	if err != nil {
