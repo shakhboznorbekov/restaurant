@@ -18,3 +18,5 @@ type District struct {
 	DeletedAt *time.Time `json:"deleted_at" bun:"deleted_at"`
 	DeletedBy *int64     `json:"deleted_by" bun:"deleted_by"`
 }
+
+//for =----> qayerda joylashganini belgilash uchun

@@ -21,3 +21,5 @@ type Banner struct {
 	DeletedAt    *time.Time        `json:"deleted_at" bun:"deleted_at"`
 	DeletedBy    *int64            `json:"deleted_by" bun:"deleted_by"`
 }
+
+//for---> e'lonlar biror aksiyalar bo'layotgan bo'lsa korsatish uchun

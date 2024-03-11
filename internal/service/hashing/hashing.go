@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 	"github.com/restaurant/internal/repository/redis/hashing"
 	"log"
 	"strconv"

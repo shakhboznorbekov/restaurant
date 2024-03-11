@@ -20,3 +20,5 @@ type Product struct {
 	DeletedBy     *int64     `json:"deleted_by" bun:"deleted_by"`
 	RestaurantID  *int64     `json:"restaurant_id" bun:"restaurant_id"`
 }
+
+//for ---->  mahsulotlar uchun
