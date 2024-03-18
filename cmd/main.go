@@ -4,18 +4,22 @@ import (
 	"crypto/rsa"
 	"expvar"
 	"fmt"
-	"github.com/ardanlabs/conf"
-	"github.com/pkg/errors"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/redis/go-redis/v9"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
 	"github.com/restaurant/internal/commands"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/router"
+	"github.com/restaurant/internal/service/fcm"
 	"github.com/restaurant/internal/service/sms"
+	"github.com/restaurant/internal/socket"
 	"log"
 	"os"
 	"time"
+
+	"github.com/ardanlabs/conf"
+	"github.com/pkg/errors"
+	"github.com/restaurant/foundation/web"
+	"github.com/restaurant/internal/auth"
+	"github.com/restaurant/internal/pkg/repository/postgresql"
+	"github.com/restaurant/internal/router"
 )
 
 /*
@@ -29,7 +33,7 @@ symbols in profiles: https://github.com/golang/go/issues/23376 / https://github.
 var build = "develop"
 
 func main() {
-	logger := log.New(os.Stdout, "SALES: ", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+	logger := log.New(os.Stdout, "SALES : ", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
 
 	if err := run(logger); err != nil {
 		log.Println("main: error:", err)
@@ -38,20 +42,21 @@ func main() {
 }
 
 func run(log *log.Logger) error {
+
 	// =========================================================================
 	// Configuration
 
 	var cfg struct {
 		conf.Version
-		ServerBaseUrl string `conf:"default:http/restu.uz"`
+		ServerBaseUrl string `conf:"default:http://restu.uz"`
 		DefaultLang   string `conf:"default:uz"`
 		ServerPort    string `conf:"default:8888"`
 		Web           struct {
 			APIHost         string        `conf:"default:0.0.0.0:3000"`
 			DebugHost       string        `conf:"default:0.0.0.0:4000"`
-			ReadTimeOut     time.Duration `conf:"default:5s"`
-			WriteTimeOut    time.Duration `cons:"default:5s"`
-			ShutdownTimeOut time.Duration `cons:"default:5s"`
+			ReadTimeout     time.Duration `conf:"default:5s"`
+			WriteTimeout    time.Duration `conf:"default:5s"`
+			ShutdownTimeout time.Duration `conf:"default:5s"`
 		}
 		Auth struct {
 			KeyID          string `conf:"default:54bb2165-71e1-41a6-af3e-7da4a0e1e2c1"`

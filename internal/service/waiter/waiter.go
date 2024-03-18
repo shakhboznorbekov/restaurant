@@ -72,8 +72,60 @@ func (s Service) WaiterGetPersonalInfo(ctx context.Context) (*GetPersonalInfoRes
 	return s.repo.WaiterGetPersonalInfo(ctx)
 }
 
+func (s Service) WaiterGetActivityStatistics(ctx context.Context) (*GetActivityStatistics, error) {
+	return s.repo.WaiterGetActivityStatistics(ctx)
+}
+
+func (s Service) WaiterGetWeeklyActivityStatistics(ctx context.Context, filter EarnedMoneyFilter) (*GetEarnedMoneyStatistics, error) {
+	return s.repo.WaiterGetWeeklyActivityStatistics(ctx, filter)
+}
+
+func (s Service) WaiterGetWeeklyAcceptedOrdersStatistics(ctx context.Context, filter EarnedMoneyFilter) (*GetAcceptedOrdersStatistics, error) {
+	return s.repo.WaiterGetWeeklyAcceptedOrdersStatistics(ctx, filter)
+}
+
 func (s Service) CalculateWaitersKPI(ctx context.Context) error {
 	return s.repo.CalculateWaitersKPI(ctx)
+}
+
+// cashier
+
+// @branch
+
+func (s Service) CashierGetLists(ctx context.Context, filter Filter) ([]CashierGetLists, int, error) {
+	return s.repo.CashierGetLists(ctx, filter)
+}
+
+func (s Service) CashierGetDetails(ctx context.Context, id int64) (CashierGetDetails, error) {
+	return s.repo.CashierGetDetails(ctx, id)
+}
+
+func (s Service) CashierCreate(ctx context.Context, request CashierCreateRequest) (CashierCreateResponse, error) {
+	return s.repo.CashierCreate(ctx, request)
+}
+
+func (s Service) CashierUpdateAll(ctx context.Context, request CashierUpdateRequest) error {
+	return s.repo.CashierUpdateAll(ctx, request)
+}
+
+func (s Service) CashierUpdateColumns(ctx context.Context, request CashierUpdateRequest) error {
+	return s.repo.CashierUpdateColumns(ctx, request)
+}
+
+func (s Service) CashierUpdateStatus(ctx context.Context, id int64, status string) error {
+	return s.repo.CashierUpdateStatus(ctx, id, status)
+}
+
+func (s Service) CashierDelete(ctx context.Context, id int64) error {
+	return s.repo.CashierDelete(ctx, id)
+}
+
+func (s Service) CashierUpdatePassword(ctx context.Context, request CashierUpdatePassword) error {
+	return s.repo.CashierUpdatePassword(ctx, request)
+}
+
+func (s Service) CashierUpdatePhone(ctx context.Context, request CashierUpdatePhone) error {
+	return s.repo.CashierUpdatePhone(ctx, request)
 }
 
 func NewService(repo Repository) *Service {

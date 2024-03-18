@@ -13,12 +13,17 @@ type User interface {
 	ClientUpdateAll(ctx context.Context, request user.ClientUpdateRequest) error
 	GetByPhone(ctx context.Context, phone string) (entity.User, error)
 	ClientUpdateMePhone(ctx context.Context, newPhone string) error
+
+	// others
+
 	IsPhoneExists(ctx context.Context, phone string) (bool, error)
+	IsSABCPhoneExists(ctx context.Context, phone string) (bool, error)
 	IsWaiterPhoneExists(ctx context.Context, phone string) (bool, error)
 
-	//watier
+	// @waiter
 
 	WaiterUpdateMePhone(ctx context.Context, newPhone string) error
+	WaiterUpdatePassword(ctx context.Context, password string, waiterId int64) error
 }
 
 type Sms interface {

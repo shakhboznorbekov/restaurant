@@ -22,6 +22,15 @@ type Repository interface {
 	BranchUpdateColumns(ctx context.Context, request BranchUpdateRequest) error
 	BranchDelete(ctx context.Context, id int64) error
 
+	// @cashier
+
+	CashierGetList(ctx context.Context, filter Filter) ([]CashierGetList, int, error)
+	CashierGetDetail(ctx context.Context, id int64) (entity.Table, error)
+	CashierCreate(ctx context.Context, request CashierCreateRequest) (CashierCreateResponse, error)
+	CashierUpdateAll(ctx context.Context, request CashierUpdateRequest) error
+	CashierUpdateColumns(ctx context.Context, request CashierUpdateRequest) error
+	CashierDelete(ctx context.Context, id int64) error
+
 	// @waiter
 
 	WaiterGetList(ctx context.Context, filter Filter) ([]WaiterGetListResponse, int, error)

@@ -99,7 +99,7 @@ func New(algorithm string, lookup PublicKeyLookup, keys Keys) (*Auth, error) {
 		return lookup(kidID)
 	}
 
-	// Create the token parser to use. The algorithm used to sign the JWT must be
+	// AdminCreate the token parser to use. The algorithm used to sign the JWT must be
 	// validated to avoid a critical vulnerability:
 	// https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
 	parser := jwt.Parser{

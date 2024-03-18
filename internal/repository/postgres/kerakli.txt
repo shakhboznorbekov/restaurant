@@ -1,0 +1,48 @@
+   COUNT(CASE WHEN DATE(o.created_at) = CURRENT_DATE THEN 1 END) AS last_day_order_count,
+								   COALESCE(AVG(u.rating), 0.0) AS rating,
+								   COUNT(o.id) AS order_count
+								FROM users u
+								        LEFT OUTER JOIN orders as o ON u.id = o.user_id
+								WHERE
+								   u.id = '%d'
+								 AND
+								   u.deleted_at IS NULL
+								 AND
+								   u.role='WAITER'`, claims.UserId)
+
+	var response waiter.GetWaiterStatistics
+	if err = r.QueryRowContext(ctx, query).Scan(&response.LastDayOrderCount, &response.Rating, &response.OrderCount); err != nil {
+		return nil, err
+	}
+
+	response.ID = claims.UserId
+
+	return &response, nil
+
+
+		query := fmt.Sprintf(`SELECT
+    								    DATE_TRUNC('day', o.created_at) AS day_start,
+    								    COUNT(o.id) AS daily_order_count,
+    								    SUM(op.price) AS daily_total_amount
+    								FROM
+    								    orders o
+    								    LEFT JOIN order_payment op ON op.order_id = o.id
+    								WHERE
+    								    o.waiter_id  = '%d'
+    -- 								 AND o.created_at >= CURRENT_DATE - INTERVAL '1 days'
+    								GROUP BY
+    								   day_start
+    								ORDER BY
+    								   day_start`, claims.UserId)
+
+	var response waiter.GetWaiterStatisticOrdersCount
+	if err = r.QueryRowContext(ctx, query).Scan(&response.Date, &response.OrderCount, &response.TotalPrice); err != nil {
+		return nil, err
+	}
+
+	response.ID = claims.UserId
+
+	return &response, nil
+}
+								   day_start
+>>>>>>> 91a2984 (add statistics)

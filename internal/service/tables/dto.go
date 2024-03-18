@@ -34,6 +34,8 @@ type AdminGetDetail struct {
 }
 
 type AdminCreateRequest struct {
+	From     *int   `json:"from" form:"from"`
+	To       *int   `json:"to" form:"to"`
 	Number   *int   `json:"number" form:"number"`
 	Capacity *int   `json:"capacity" form:"capacity"`
 	BranchID *int64 `json:"branch_id" form:"branch_id"`
@@ -121,4 +123,50 @@ type WaiterOrder struct {
 	Id          int64 `json:"id" bun:"id"`
 	ClientCount *int  `json:"client_count" bun:"client_count"`
 	Number      *int  `json:"number" bun:"number"`
+}
+
+// @branch
+
+type CashierGetList struct {
+	ID       int64   `json:"id"`
+	Number   *int    `json:"number"`
+	Status   *string `json:"status"`
+	Capacity *int    `json:"capacity"`
+}
+
+type CashierGetDetail struct {
+	ID       int64   `json:"id"`
+	Number   *int    `json:"number"`
+	Status   *string `json:"status"`
+	Capacity *int    `json:"capacity"`
+}
+
+type CashierCreateRequest struct {
+	From     *int `json:"from" form:"from"`
+	To       *int `json:"to" form:"to"`
+	Number   *int `json:"number" form:"number"`
+	Capacity *int `json:"capacity" form:"capacity"`
+}
+
+type CashierCreateResponse struct {
+	bun.BaseModel `bun:"table:tables"`
+
+	ID        int64     `json:"id" bun:"id,pk,autoincrement"`
+	Number    *int      `json:"number" bun:"number"`
+	Status    *string   `json:"status" bun:"status"`
+	Capacity  *int      `json:"capacity" bun:"capacity"`
+	BranchID  *int64    `json:"branch_id" bun:"branch_id"`
+	CreatedAt time.Time `json:"-" bun:"created_at"`
+	CreatedBy int64     `json:"-" bun:"created_by"`
+}
+
+type CashierUpdateRequest struct {
+	ID       int64   `json:"id" form:"id"`
+	Number   *int    `json:"number" bun:"number"`
+	Status   *string `json:"status" bun:"status"`
+	Capacity *int    `json:"capacity" bun:"capacity"`
+}
+
+type CashierGenerateQRTable struct {
+	Tables []int64 `json:"tables" form:"tables"`
 }

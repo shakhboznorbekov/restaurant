@@ -61,6 +61,32 @@ func (s Service) BranchDelete(ctx context.Context, id int64) error {
 	return s.repo.BranchDelete(ctx, id)
 }
 
+// @branch
+
+func (s Service) CashierGetList(ctx context.Context, filter Filter) ([]CashierGetList, int, error) {
+	return s.repo.CashierGetList(ctx, filter)
+}
+
+func (s Service) CashierGetDetail(ctx context.Context, id int64) (entity.Table, error) {
+	return s.repo.CashierGetDetail(ctx, id)
+}
+
+func (s Service) CashierCreate(ctx context.Context, request CashierCreateRequest) (CashierCreateResponse, error) {
+	return s.repo.CashierCreate(ctx, request)
+}
+
+func (s Service) CashierUpdateAll(ctx context.Context, request CashierUpdateRequest) error {
+	return s.repo.CashierUpdateAll(ctx, request)
+}
+
+func (s Service) CashierUpdateColumns(ctx context.Context, request CashierUpdateRequest) error {
+	return s.repo.CashierUpdateColumns(ctx, request)
+}
+
+func (s Service) CashierDelete(ctx context.Context, id int64) error {
+	return s.repo.CashierDelete(ctx, id)
+}
+
 // @waiter
 
 func (s Service) WaiterGetList(ctx context.Context, filter Filter) ([]WaiterGetListResponse, int, error) {

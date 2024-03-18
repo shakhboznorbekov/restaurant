@@ -88,7 +88,8 @@ func (c *Context) RespondMobileError(err error) error {
 
 	// If the error was of the type *Error, the handler has
 	// a specific status code and error to return.
-	if webErr, ok := Cause(err).(*Error); ok {
+	webErr, ok := Cause(err).(*Error)
+	if ok {
 		errMsg := webErr.Err.Error()
 		if webErr.Fields != nil {
 			for _, f := range webErr.Fields {
@@ -103,7 +104,8 @@ func (c *Context) RespondMobileError(err error) error {
 
 	// If not, the handler sent any arbitrary error value so use 500.
 	er := ErrorResponse{
-		Error: err.Error(),
+		Error:  err.Error(),
+		Fields: webErr.Fields,
 	}
 	return c.Respond(er, http.StatusInternalServerError)
 }

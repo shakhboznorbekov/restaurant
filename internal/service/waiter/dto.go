@@ -132,6 +132,48 @@ type WaiterPhotoUpdateRequest struct {
 	PhotoLink *string               `json:"-" form:"-"`
 }
 
+type GetActivityStatistics struct {
+	Activity   *int     `json:"activity"`
+	Rating     *float32 `json:"rating"`
+	OrderCount *int     `json:"order_count" bun:"order_count"`
+}
+
+type EarnedMoneyFilter struct {
+	Date *string `json:"date"`
+}
+
+type GetEarnedMoneyStatistics struct {
+	OrderCount     *int                             `json:"order_count"`
+	Profit         *float64                         `json:"-"`
+	ProfitResponse *float64                         `json:"profit"`
+	Date           *string                          `json:"date"`
+	Weekly         []GetWeeklyEarnedMoneyStatistics `json:"weekly"`
+}
+
+type GetWeeklyEarnedMoneyStatistics struct {
+	Date           *string  `json:"date"`
+	Week           *int     `json:"weekday"`
+	OrderCount     *int     `json:"-"`
+	Profit         *float64 `json:"-"`
+	ProfitResponse *float64 `json:"profit"`
+}
+
+type GetAcceptedOrdersStatistics struct {
+	OrderCount     *int                                `json:"order_count"`
+	Profit         *float64                            `json:"-"`
+	ProfitResponse *float64                            `json:"profit"`
+	Date           *string                             `json:"date"`
+	Weekly         []GetWeeklyAcceptedOrdersStatistics `json:"weekly"`
+}
+
+type GetWeeklyAcceptedOrdersStatistics struct {
+	Date           *string  `json:"date"`
+	Week           *int     `json:"weekday"`
+	OrderCount     *int     `json:"order_count"`
+	Profit         *float64 `json:"-"`
+	ProfitResponse *float64 `json:"-"`
+}
+
 // @cashier
 
 type CashierGetList struct {
@@ -146,4 +188,78 @@ type CashierGetDetail struct {
 	ID     int64   `json:"id"`
 	Name   *string `json:"name"`
 	Avatar *string `json:"avatar"`
+}
+
+type CashierGetLists struct {
+	ID      int64   `json:"id"`
+	Name    *string `json:"name"`
+	Phone   *string `json:"phone"`
+	Status  *string `json:"status"`
+	Photo   *string `json:"photo"`
+	Address *string `json:"address"`
+}
+
+type CashierGetDetails struct {
+	ID        int64    `json:"id"`
+	Name      *string  `json:"name"`
+	Phone     *string  `json:"phone"`
+	BirthDate *string  `json:"birth_date"`
+	Gender    *string  `json:"gender"`
+	Role      *string  `json:"role"`
+	Photo     *string  `json:"photo"`
+	Rating    *float64 `json:"rating"`
+	Address   *string  `json:"address"`
+}
+
+type CashierCreateRequest struct {
+	Name                *string               `json:"name" form:"name"`
+	Password            *string               `json:"password" form:"password"`
+	Phone               *string               `json:"phone" form:"phone"`
+	BirthDate           *string               `json:"birth_date" form:"birth_date"`
+	Gender              *string               `json:"gender" form:"gender"`
+	ServicePercentageID *int64                `json:"service_percent_id" form:"service_percent_id"`
+	Photo               *multipart.FileHeader `json:"photo" form:"photo"`
+	PhotoLink           *string               `json:"-" form:"-"`
+	Address             *string               `json:"address" form:"address"`
+}
+
+type CashierCreateResponse struct {
+	bun.BaseModel `bun:"table:users"`
+
+	ID             int64      `json:"id" bun:"id,pk,autoincrement"`
+	Name           *string    `json:"name" bun:"name"`
+	Password       *string    `json:"-" bun:"password"`
+	Phone          *string    `json:"phone" bun:"phone"`
+	BirthDate      *time.Time `json:"birth_date" bun:"birth_date"`
+	Gender         *string    `json:"gender" bun:"gender"`
+	Role           *string    `json:"role" bun:"role"`
+	BranchID       *int64     `json:"branch_id" bun:"branch_id"`
+	ServicePercent *int64     `json:"service_percent" bun:"service_percent"`
+	Photo          *string    `json:"photo" bun:"photo"`
+	Address        *string    `json:"address" bun:"address"`
+
+	CreatedAt time.Time `json:"created_at" bun:"created_at"`
+	CreatedBy int64     `json:"created_by" bun:"created_by"`
+}
+
+type CashierUpdateRequest struct {
+	ID                  int64                 `json:"id" form:"id"`
+	Name                *string               `json:"name" form:"name"`
+	BirthDate           *string               `json:"birth_date" form:"birth_date"`
+	Gender              *string               `json:"gender" form:"gender"`
+	ServicePercentageID *int64                `json:"rating" form:"rating"`
+	Photo               *multipart.FileHeader `json:"photo" form:"photo"`
+	PhotoLink           *string               `json:"-" form:"-"`
+	Address             *string               `json:"address" form:"address"`
+}
+
+type CashierUpdatePhone struct {
+	ID      int64  `json:"id" form:"id"`
+	Phone   string `json:"phone" form:"phone"`
+	SMSCode string `json:"sms_code" form:"sms_code"`
+}
+
+type CashierUpdatePassword struct {
+	ID       int64   `json:"id" form:"id"`
+	Password *string `json:"password" form:"password"`
 }

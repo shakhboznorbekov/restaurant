@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
-
 	"github.com/restaurant/internal/auth"
 )
 
