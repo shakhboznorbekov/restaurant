@@ -25,10 +25,17 @@ type Repository interface {
 	ClientGetDetail(ctx context.Context, id int64) (ClientGetDetail, error)
 	ClientNearlyBranchGetList(ctx context.Context, filter Filter) ([]ClientGetList, int, error)
 	ClientUpdateColumns(ctx context.Context, request ClientUpdateRequest) error
+	ClientAddSearchCount(ctx context.Context, branchID int64) error
+	ClientGetListOrderSearchCount(ctx context.Context, filter Filter) ([]ClientGetList, int, error)
+	ClientGetListByCategoryID(ctx context.Context, filter Filter, CategoryID int64) ([]ClientGetList, int, error)
 
 	// @branch
 
 	BranchGetDetail(ctx context.Context, id int64) (BranchGetDetail, error)
+
+	// @cashier
+
+	CashierGetDetail(ctx context.Context, id int64) (CashierGetDetail, error)
 
 	// @token
 

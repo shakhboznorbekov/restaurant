@@ -13,7 +13,7 @@ func Authenticate(a *auth.Auth, role string) web.Middleware {
 	// This is the actual middleware function to be executed.
 	m := func(handler web.Handler) web.Handler {
 
-		// Create the handler that will be attached in the middleware chain.
+		// AdminCreate the handler that will be attached in the middleware chain.
 		h := func(c *web.Context) error {
 
 			// Expecting: Bearer <token>
@@ -79,7 +79,7 @@ func Authenticate(a *auth.Auth, role string) web.Middleware {
 func WsAuthenticate(a *auth.Auth) web.Middleware {
 	// This is the actual middleware function to be executed.
 	m := func(handler web.Handler) web.Handler {
-		// Create the handler that will be attached in the middleware chain.
+		// AdminCreate the handler that will be attached in the middleware chain.
 		h := func(c *web.Context) error {
 			// Expecting: Bearer <token>
 			authStr := c.Query("authorization")

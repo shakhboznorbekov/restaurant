@@ -132,6 +132,17 @@ func (d Database) GetLang(ctx context.Context) string {
 	return d.DefaultLang
 }
 
+func (d Database) GetUserID(ctx context.Context) (int, error) {
+	if value, ok := ctx.Value("user_id").(int); ok {
+		return value, nil
+	}
+
+	return 0, web.NewRequestError(
+		errors.New("token doesn't contain UserID"),
+		http.StatusUnauthorized,
+	)
+}
+
 func (d Database) LoadTimeZone() *time.Location {
 	loc, _ := time.LoadLocation("Asia/Tashkent")
 

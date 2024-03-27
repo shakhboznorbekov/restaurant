@@ -17,6 +17,7 @@ type Filter struct {
 	Lon     *float64
 	Lat     *float64
 	IsLiked *bool
+	HasMenu *bool
 }
 
 type DetailFilter struct {
@@ -50,14 +51,16 @@ type AdminGetDetail struct {
 }
 
 type AdminCreateRequest struct {
-	Location   map[string]float32       `json:"location" form:"location"`
-	Photos     []*multipart.FileHeader  `json:"photos" form:"photos"`
-	PhotosLink *string                  `json:"-" form:"-"`
-	Status     *string                  `json:"status" form:"status"`
-	WorkTime   map[string]string        `json:"work_time" form:"work_time"`
-	Name       *string                  `json:"name" form:"name"`
-	CategoryID *int64                   `json:"category_id" form:"category_id"`
-	User       user.BranchCreateRequest `json:"user" form:"user"`
+	Location                   map[string]float32       `json:"location" form:"location"`
+	Photos                     []*multipart.FileHeader  `json:"photos" form:"photos"`
+	PhotosLink                 *string                  `json:"-" form:"-"`
+	Status                     *string                  `json:"status" form:"status"`
+	WorkTime                   map[string]string        `json:"work_time" form:"work_time"`
+	Name                       *string                  `json:"name" form:"name"`
+	CategoryID                 *int64                   `json:"category_id" form:"category_id"`
+	User                       user.BranchCreateRequest `json:"user" form:"user"`
+	DefaultServicePercentage   *float64                 `json:"default_service_percentage" form:"default_service_percentage"`
+	DefaultServicePercentageID *int64                   `json:"-" form:"-"`
 }
 
 type AdminCreateResponse struct {
@@ -71,9 +74,10 @@ type AdminCreateResponse struct {
 	Name       *string            `json:"name" bun:"name"`
 	CategoryID *int64             `json:"category_id" bun:"category_id"`
 
-	CreatedAt    time.Time `json:"created_at" bun:"created_at"`
-	CreatedBy    int64     `json:"created_by" bun:"created_by"`
-	RestaurantID int64     `json:"restaurant_id" bun:"restaurant_id"`
+	CreatedAt                time.Time `json:"created_at" bun:"created_at"`
+	CreatedBy                int64     `json:"created_by" bun:"created_by"`
+	RestaurantID             int64     `json:"restaurant_id" bun:"restaurant_id"`
+	DefaultServicePercentage *int64    `json:"default_service_percentage" bun:"default_service_percentage"`
 }
 
 type AdminUpdateRequest struct {
@@ -164,6 +168,11 @@ type User struct {
 // @branch
 
 type BranchGetDetail struct {
+	ID   int64   `json:"id"`
+	Logo *string `json:"logo"`
+}
+
+type CashierGetDetail struct {
 	ID   int64   `json:"id"`
 	Logo *string `json:"logo"`
 }

@@ -40,3 +40,8 @@ type AdminUpdateRequest struct {
 	ID      int64    `json:"id" form:"id"`
 	Percent *float64 `json:"percent" form:"percent"`
 }
+
+type AdminUpdateBranchRequest struct {
+	ID       int64  `json:"id" form:"id"`
+	BranchID *int64 `json:"branch_id" form:"branch_id"`
+}

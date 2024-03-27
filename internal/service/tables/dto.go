@@ -132,6 +132,7 @@ type CashierGetList struct {
 	Number   *int    `json:"number"`
 	Status   *string `json:"status"`
 	Capacity *int    `json:"capacity"`
+	BranchID *int64  `json:"branch_id"`
 }
 
 type CashierGetDetail struct {
@@ -139,6 +140,7 @@ type CashierGetDetail struct {
 	Number   *int    `json:"number"`
 	Status   *string `json:"status"`
 	Capacity *int    `json:"capacity"`
+	BranchID *int64  `json:"branch_id"`
 }
 
 type CashierCreateRequest struct {

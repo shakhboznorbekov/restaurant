@@ -1510,6 +1510,24 @@ func (uc Controller) WaiterGetListWorkTime(c *web.Context) error {
 	}, http.StatusOK)
 }
 
+func (uc Controller) WaiterGetWeeklyRatingStatistics(c *web.Context) error {
+	var filter waiter.Filter
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.WaiterGetWeeklyRatingStatistics(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
 func (uc Controller) GetMe(c *web.Context) error {
 	authStr := c.Request.Header.Get("Authorization")
 

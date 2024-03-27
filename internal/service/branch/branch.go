@@ -111,10 +111,28 @@ func (s Service) ClientUpdateColumns(ctx context.Context, request ClientUpdateRe
 	return s.repo.ClientUpdateColumns(ctx, request)
 }
 
+func (s Service) ClientAddSearchCount(ctx context.Context, branchID int64) error {
+	return s.repo.ClientAddSearchCount(ctx, branchID)
+}
+
+func (s Service) ClientGetListByCategoryID(ctx context.Context, filter Filter, CategoryID int64) ([]ClientGetList, int, error) {
+	return s.repo.ClientGetListByCategoryID(ctx, filter, CategoryID)
+}
+
+func (s Service) ClientGetListOrderSearchCount(ctx context.Context, filter Filter) ([]ClientGetList, int, error) {
+	return s.repo.ClientGetListOrderSearchCount(ctx, filter)
+}
+
 // @branch
 
 func (s Service) BranchGetDetail(ctx context.Context, id int64) (BranchGetDetail, error) {
 	return s.repo.BranchGetDetail(ctx, id)
+}
+
+// @cashier
+
+func (s Service) CashierGetDetail(ctx context.Context, id int64) (CashierGetDetail, error) {
+	return s.repo.CashierGetDetail(ctx, id)
 }
 
 // @token
