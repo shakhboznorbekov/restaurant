@@ -3,12 +3,12 @@ package feedback
 import (
 	"context"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/service/feedback"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/service/feedback"
 )
 
 type Repository struct {

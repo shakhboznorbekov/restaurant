@@ -48,6 +48,9 @@ func (au UseCase) SignInClient(ctx context.Context, request auth.SignInClient) (
 		if detail.Phone == nil {
 			return "", isNew, errors.New("phone not found: getByPhone")
 		}
+		if detail.Role != nil && *detail.Role != "CLIENT" {
+			return "", isNew, errors.New("only clients can sign-in with this api")
+		}
 
 		if detail.Name == nil {
 			isNew = true

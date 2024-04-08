@@ -71,7 +71,8 @@ func (uc Controller) SuperAdminGetRestaurantDetail(c *web.Context) error {
 func (uc Controller) SuperAdminCreateRestaurant(c *web.Context) error {
 	var request restaurant_service.SuperAdminCreateRequest
 
-	if err := c.BindFunc(&request, "Name", "CategoryID", "User"); err != nil {
+	if err := c.BindFunc(&request,
+		"Name", "Logo", "User"); err != nil {
 		return c.RespondError(err)
 	}
 
@@ -95,7 +96,7 @@ func (uc Controller) SuperAdminUpdateRestaurantAll(c *web.Context) error {
 
 	var request restaurant_service.SuperAdminUpdateRequest
 
-	if err := c.BindFunc(&request, "ID", "Name", "CategoryID", "Logo"); err != nil {
+	if err := c.BindFunc(&request, "ID", "Name", "Logo"); err != nil {
 		return c.RespondError(err)
 	}
 
@@ -167,6 +168,31 @@ func (uc Controller) SiteGetRestaurantList(c *web.Context) error {
 			"results": list,
 			"count":   count,
 		},
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) SuperAdminUpdateRestaurantAdmin(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request restaurant_service.SuperAdminUpdateRestaurantAdmin
+	if err := c.BindFunc(&request, "Password"); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.SuperAdminUpdateRestaurantAdmin(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
 		"status": true,
 	}, http.StatusOK)
 }
@@ -418,7 +444,10 @@ func (uc Controller) AdminGetBranchDetail(c *web.Context) error {
 func (uc Controller) AdminCreateBranch(c *web.Context) error {
 	var request branch_service.AdminCreateRequest
 
-	if err := c.BindFunc(&request, "Location", "WorkTime", "User"); err != nil {
+	if err := c.BindFunc(&request,
+		"Location", "WorkTime", "User",
+		"Name", "CategoryID", "DefaultServicePercentage",
+	); err != nil {
 		return c.RespondError(err)
 	}
 
@@ -519,6 +548,31 @@ func (uc Controller) AdminImageDeleteBranch(c *web.Context) error {
 	request.ID = int64(id)
 
 	err := uc.useCase.AdminDeleteImage(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminUpdateBranchAdmin(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request branch_service.AdminUpdateBranchAdmin
+	if err := c.BindFunc(&request, "Password"); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.AdminUpdateBranchAdmin(c.Ctx, request)
 	if err != nil {
 		return c.RespondError(err)
 	}
@@ -818,6 +872,12 @@ func (uc Controller) AdminGetTableList(c *web.Context) error {
 	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
 		filter.Offset = offset
 	}
+	if branchID, ok := c.GetQueryFunc(reflect.Int, "branch_id").(*int); ok {
+		filter.BranchID = branchID
+	}
+	if hallID, ok := c.GetQueryFunc(reflect.Int, "hall_id").(*int); ok {
+		filter.HallID = hallID
+	}
 
 	if err := c.ValidQuery(); err != nil {
 		return c.RespondError(err)
@@ -858,7 +918,7 @@ func (uc Controller) AdminGetTableDetail(c *web.Context) error {
 func (uc Controller) AdminCreateTable(c *web.Context) error {
 	var request table_service.AdminCreateRequest
 
-	if err := c.BindFunc(&request, "Number", "Capacity", "BranchID"); err != nil {
+	if err := c.BindFunc(&request, "Capacity", "BranchID"); err != nil {
 		return c.RespondError(err)
 	}
 
@@ -953,6 +1013,9 @@ func (uc Controller) BranchGetTableList(c *web.Context) error {
 	}
 	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
 		filter.Offset = offset
+	}
+	if hallID, ok := c.GetQueryFunc(reflect.Int, "hall_id").(*int); ok {
+		filter.HallID = hallID
 	}
 
 	if err := c.ValidQuery(); err != nil {
@@ -1107,6 +1170,9 @@ func (uc Controller) CashierGetTableList(c *web.Context) error {
 	}
 	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
 		filter.Offset = offset
+	}
+	if hallID, ok := c.GetQueryFunc(reflect.Int, "hall_id").(*int); ok {
+		filter.HallID = hallID
 	}
 
 	if err := c.ValidQuery(); err != nil {
@@ -1264,6 +1330,9 @@ func (uc Controller) WaiterGetTableList(c *web.Context) error {
 	}
 	if search, ok := c.GetQueryFunc(reflect.String, "search").(*string); ok {
 		filter.Search = search
+	}
+	if hallID, ok := c.GetQueryFunc(reflect.Int, "hall_id").(*int); ok {
+		filter.HallID = hallID
 	}
 
 	if err := c.ValidQuery(); err != nil {
@@ -1567,6 +1636,461 @@ func (uc Controller) BranchDeletePrinters(c *web.Context) error {
 
 	return c.Respond(map[string]interface{}{
 		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+// #halls ----------------------------------------------------------------------------------------
+
+//@admin
+
+func (uc Controller) AdminGetHallList(c *web.Context) error {
+	var filter halls.Filter
+
+	if limit, ok := c.GetQueryFunc(reflect.Int, "limit").(*int); ok {
+		filter.Limit = limit
+	}
+	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
+		filter.Offset = offset
+	}
+	if search, ok := c.GetQueryFunc(reflect.String, "search").(*string); ok {
+		filter.Search = search
+	}
+	if branchID, ok := c.GetQueryFunc(reflect.Int, "branch_id").(*int); ok {
+		filter.BranchID = branchID
+	}
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	list, count, err := uc.useCase.AdminGetHallList(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data": map[string]interface{}{
+			"results": list,
+			"count":   count,
+		},
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminGetHallDetail(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.AdminGetHallDetail(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminCreateHall(c *web.Context) error {
+	var request halls.AdminCreateRequest
+
+	if err := c.BindFunc(&request, "Name", "BranchID"); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.AdminCreateHall(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminUpdateHallAll(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request halls.AdminUpdateRequest
+
+	if err := c.BindFunc(&request, "Name", "BranchID"); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.AdminUpdateHall(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminUpdateHallColumns(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request halls.AdminUpdateRequest
+
+	if err := c.BindFunc(&request); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.AdminUpdateHallColumn(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminDeleteHall(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	err := uc.useCase.AdminDeleteHall(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+// @branch
+
+func (uc Controller) BranchGetHallList(c *web.Context) error {
+	var filter halls.Filter
+
+	if limit, ok := c.GetQueryFunc(reflect.Int, "limit").(*int); ok {
+		filter.Limit = limit
+	}
+	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
+		filter.Offset = offset
+	}
+	if search, ok := c.GetQueryFunc(reflect.String, "search").(*string); ok {
+		filter.Search = search
+	}
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	list, count, err := uc.useCase.BranchGetHallList(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data": map[string]interface{}{
+			"results": list,
+			"count":   count,
+		},
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchGetHallDetail(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.BranchGetHallDetail(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchCreateHall(c *web.Context) error {
+	var request halls.BranchCreateRequest
+
+	if err := c.BindFunc(&request, "Name"); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.BranchCreateHall(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchUpdateHallAll(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request halls.BranchUpdateRequest
+
+	if err := c.BindFunc(&request, "Name"); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.BranchUpdateHall(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchUpdateHallColumns(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request halls.BranchUpdateRequest
+
+	if err := c.BindFunc(&request); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.BranchUpdateHallColumn(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchDeleteHall(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	err := uc.useCase.BranchDeleteHall(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+// @cashier
+
+func (uc Controller) CashierGetHallList(c *web.Context) error {
+	var filter halls.Filter
+
+	if limit, ok := c.GetQueryFunc(reflect.Int, "limit").(*int); ok {
+		filter.Limit = limit
+	}
+	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
+		filter.Offset = offset
+	}
+	if search, ok := c.GetQueryFunc(reflect.String, "search").(*string); ok {
+		filter.Search = search
+	}
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	list, count, err := uc.useCase.CashierGetHallList(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data": map[string]interface{}{
+			"results": list,
+			"count":   count,
+		},
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) CashierGetHallDetail(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.CashierGetHallDetail(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) CashierCreateHall(c *web.Context) error {
+	var request halls.CashierCreateRequest
+
+	if err := c.BindFunc(&request, "Name"); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.CashierCreateHall(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) CashierUpdateHallAll(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request halls.CashierUpdateRequest
+
+	if err := c.BindFunc(&request, "Name"); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.CashierUpdateHall(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) CashierUpdateHallColumns(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	var request halls.CashierUpdateRequest
+
+	if err := c.BindFunc(&request); err != nil {
+		return c.RespondError(err)
+	}
+
+	request.ID = int64(id)
+
+	err := uc.useCase.CashierUpdateHallColumn(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) CashierDeleteHall(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	err := uc.useCase.CashierDeleteHall(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+// @waiter
+
+func (uc Controller) WaiterGetHallList(c *web.Context) error {
+	var filter halls.Filter
+
+	if limit, ok := c.GetQueryFunc(reflect.Int, "limit").(*int); ok {
+		filter.Limit = limit
+	}
+	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
+		filter.Offset = offset
+	}
+	if search, ok := c.GetQueryFunc(reflect.String, "search").(*string); ok {
+		filter.Search = search
+	}
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	list, count, err := uc.useCase.WaiterGetHallList(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data": map[string]interface{}{
+			"results": list,
+			"count":   count,
+		},
 		"status": true,
 	}, http.StatusOK)
 }

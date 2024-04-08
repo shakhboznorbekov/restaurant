@@ -43,6 +43,10 @@ func (s Service) AdminDeleteImage(ctx context.Context, request AdminDeleteImageR
 	return s.repo.AdminDeleteImage(ctx, request)
 }
 
+func (s Service) AdminUpdateBranchAdmin(ctx context.Context, request AdminUpdateBranchAdmin) error {
+	return s.repo.AdminUpdateBranchAdmin(ctx, request)
+}
+
 // @client
 
 func (s Service) ClientGetList(ctx context.Context, filter Filter) ([]ClientGetList, int, error) {

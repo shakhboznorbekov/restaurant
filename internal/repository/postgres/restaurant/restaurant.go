@@ -4,17 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/pkg/utils"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/hashing"
-	"github.com/restaurant/internal/service/restaurant"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/pkg/utils"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/hashing"
+	"restu-backend/internal/service/restaurant"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type Repository struct {
@@ -219,6 +220,20 @@ func (r Repository) SuperAdminUpdateColumns(ctx context.Context, request restaur
 
 func (r Repository) SuperAdminDelete(ctx context.Context, id int64) error {
 	return r.DeleteRow(ctx, "restaurants", id, auth.RoleSuperAdmin)
+}
+
+func (r Repository) SuperAdminUpdateRestaurantAdmin(ctx context.Context, request restaurant.SuperAdminUpdateRestaurantAdmin) error {
+	_, err := r.CheckClaims(ctx, auth.RoleSuperAdmin)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.NewUpdate().Table("users").Set("password = ?", request.Password).Where("restaurant_id = ?", request.ID).Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // @site

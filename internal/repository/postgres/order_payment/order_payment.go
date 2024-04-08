@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/order_payment"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/order_payment"
 	"time"
 )
 
@@ -273,22 +273,34 @@ func (r Repository) CashierCreate(ctx context.Context, request order_payment.Cas
 	}
 
 	query := fmt.Sprintf(`
-					SELECT
-					    SUM(m.new_price * om.count) AS price
-					FROM
-					    orders o 
-					    JOIN order_menu om ON o.id = om.order_id
-					    JOIN menus m ON om.menu_id = m.id
-					WHERE om.order_id = '%d' AND o.deleted_at IS NULL AND o.status !='CANCELLED' AND om.deleted_at IS NULL 
-					GROUP BY
-					    o.id
-					`, *request.OrderID)
+			SELECT
+					SUM(m.new_price * om.count) AS price
+			FROM
+			orders o
+			JOIN order_menu om ON o.id = om.order_id
+			JOIN menus m ON om.menu_id = m.id
+			WHERE
+			om.order_id = '%d'
+			AND o.deleted_at IS NULL
+			AND o.status != 'CANCELLED'
+-- 			AND NOT EXISTS (
+-- 				SELECT 1
+-- 					FROM order_menu
+-- 			WHERE order_id = '%d'
+-- 			AND status = 'NEW'
+-- 			AND deleted_at IS NULL
+-- 				)
+				GROUP BY o.id
+					`, *request.OrderID, *request.OrderID)
 
 	var price *float64
 
 	err = r.QueryRowContext(ctx, query).Scan(
 		&price,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return order_payment.CashierCreateResponse{}, web.NewRequestError(errors.New("order_menu is new"), http.StatusBadRequest)
+	}
 	if err != nil {
 		return order_payment.CashierCreateResponse{}, web.NewRequestError(errors.Wrap(err, "select order price"), http.StatusInternalServerError)
 	}

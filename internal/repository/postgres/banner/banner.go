@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/commands"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/banner"
-	"github.com/restaurant/internal/service/hashing"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/commands"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/banner"
+	"restu-backend/internal/service/hashing"
 	"strings"
 	"time"
 )
@@ -197,13 +197,11 @@ func (r Repository) BranchGetDetail(ctx context.Context, id int64) (*banner.Bran
 		for _, v := range *response.MenuIds {
 			var menu banner.Menu
 			queryMenu := fmt.Sprintf(`SELECT m.id, 
-													f.name, 
+													m.name, 
 													m.description->>'%s',
-													f.photos[1],
+													m.photos[1],
 													m.new_price
 									 	 	 FROM menus m 
-									 	 	     JOIN foods f 
-									 	 	         ON m.food_id = f.id 
 									 	 	 WHERE m.id='%d'`, lang, v)
 			if err = r.QueryRowContext(ctx, queryMenu).Scan(&menu.Id, &menu.Title, &menu.Description, &menu.Photo, &menu.Price); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
@@ -581,12 +579,10 @@ func (r Repository) ClientGetDetail(ctx context.Context, id int64) (*banner.Clie
 		for _, v := range *response.MenuIds {
 			var menu banner.Menu
 			queryMenu := fmt.Sprintf(`SELECT m.id, 
-													f.name, 
+													m.name, 
 													m.description->>'%s',
-													f.photos[1]
+													m.photos[1]
 									 	 	 FROM menus m 
-									 	 	     JOIN foods f 
-									 	 	         ON m.food_id = f.id 
 									 	 	 WHERE m.id='%d'`, lang, v)
 			if err := r.QueryRowContext(ctx, queryMenu).Scan(&menu.Id, &menu.Title, &menu.Description, &menu.Photo); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
@@ -785,13 +781,11 @@ func (r Repository) SuperAdminGetDetail(ctx context.Context, id int64) (*banner.
 		for _, v := range *response.MenuIds {
 			var menu banner.Menu
 			queryMenu := fmt.Sprintf(`SELECT m.id,
-													f.name,
+													m.name,
 													m.description->>'%s',
-													f.photos[1],
+													m.photos[1],
 													m.new_price
 									 	 	 FROM menus m
-									 	 	     JOIN foods f
-									 	 	         ON m.food_id = f.id
 									 	 	 WHERE m.id='%d'`, lang, v)
 			if err = r.QueryRowContext(ctx, queryMenu).Scan(&menu.Id, &menu.Title, &menu.Description, &menu.Photo, &menu.Price); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err

@@ -9,6 +9,10 @@ type Service struct {
 	repo Repository
 }
 
+func (s Service) SuperAdminUpdateRestaurantAdmin(ctx context.Context, request SuperAdminUpdateRestaurantAdmin) error {
+	return s.repo.SuperAdminUpdateRestaurantAdmin(ctx, request)
+}
+
 func (s Service) SuperAdminGetList(ctx context.Context, filter Filter) ([]SuperAdminGetList, int, error) {
 	return s.repo.SuperAdminGetList(ctx, filter)
 }

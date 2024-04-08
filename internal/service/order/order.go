@@ -82,19 +82,27 @@ func (s *Service) WaiterAccept(ctx context.Context, id int64) (*WaiterAcceptOrde
 	return s.repo.WaiterAccept(ctx, id)
 }
 
+func (s *Service) WaiterGetHistoryActivityList(ctx context.Context, filter Filter) ([]HistoryActivityListResponse, int, error) {
+	return s.repo.WaiterGetHistoryActivityList(ctx, filter)
+}
+
+func (s *Service) WaiterGetMyOrderDetail(ctx context.Context, id int64) (*WaiterGetOrderDetailResponse, error) {
+	return s.repo.WaiterGetMyOrderDetail(ctx, id)
+}
+
 // #ws
 
-//func (s *Service) GetWsMessage(ctx context.Context, orderID int64) (GetWsMessageResponse, error) {
-//	return s.repo.GetWsMessage(ctx, orderID)
-//}
-//
-//func (s *Service) GetWsOrderMenus(ctx context.Context, orderId int64, menus []Menu) ([]GetWsOrderMenusResponse, int64, error) {
-//	return s.repo.GetWsOrderMenus(ctx, orderId, menus)
-//}
-//
-//func (s *Service) GetWsWaiter(waiterID int64) (GetWsWaiterResponse, error) {
-//	return s.repo.GetWsWaiter(waiterID)
-//}
+func (s *Service) GetWsMessage(ctx context.Context, orderID int64) (GetWsMessageResponse, error) {
+	return s.repo.GetWsMessage(ctx, orderID)
+}
+
+func (s *Service) GetWsOrderMenus(ctx context.Context, orderId int64, menus []Menu) ([]GetWsOrderMenusResponse, int64, error) {
+	return s.repo.GetWsOrderMenus(ctx, orderId, menus)
+}
+
+func (s *Service) GetWsWaiter(waiterID int64) (GetWsWaiterResponse, error) {
+	return s.repo.GetWsWaiter(waiterID)
+}
 
 // others
 
@@ -104,4 +112,8 @@ func (s *Service) CheckOrderIfAccepted(id int64) error {
 
 func (s *Service) CancelOrder(id int64) error {
 	return s.repo.CancelOrder(id)
+}
+
+func (s *Service) OrderChecking(ctx context.Context, Time int) ([]GetWsMessageResponse, error) {
+	return s.repo.OrderChecking(ctx, Time)
 }

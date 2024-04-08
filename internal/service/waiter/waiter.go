@@ -64,6 +64,8 @@ func (s Service) UpdatePhone(ctx context.Context, request BranchUpdatePhone) err
 	return s.repo.UpdatePhone(ctx, request)
 }
 
+// #waiter
+
 func (s Service) WaiterGetMe(ctx context.Context) (*GetMeResponse, error) {
 	return s.repo.WaiterGetMe(ctx)
 }
@@ -82,6 +84,10 @@ func (s Service) WaiterGetWeeklyActivityStatistics(ctx context.Context, filter E
 
 func (s Service) WaiterGetWeeklyAcceptedOrdersStatistics(ctx context.Context, filter EarnedMoneyFilter) (*GetAcceptedOrdersStatistics, error) {
 	return s.repo.WaiterGetWeeklyAcceptedOrdersStatistics(ctx, filter)
+}
+
+func (s Service) WaiterGetWeeklyRatingStatistics(ctx context.Context, filter Filter) ([]GetWeeklyRating, error) {
+	return s.repo.WaiterGetWeeklyRatingStatistics(ctx, filter)
 }
 
 func (s Service) CalculateWaitersKPI(ctx context.Context) error {

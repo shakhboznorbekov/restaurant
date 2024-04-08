@@ -15,6 +15,7 @@ type Repository interface {
 	AdminUpdateAll(ctx context.Context, request AdminUpdateRequest) error
 	AdminUpdateColumns(ctx context.Context, request AdminUpdateRequest) error
 	AdminDelete(ctx context.Context, id int64) error
+	AdminRemovePhoto(ctx context.Context, id int64, index *int) (*string, error)
 
 	// @client
 
@@ -32,6 +33,7 @@ type Repository interface {
 	BranchDelete(ctx context.Context, id int64) error
 	BranchUpdatePrinterID(ctx context.Context, request BranchUpdatePrinterIDRequest) error
 	BranchDeletePrinterID(ctx context.Context, menuID int64) error
+	BranchRemovePhoto(ctx context.Context, id int64, index int) (*string, error)
 
 	// @cashier
 
@@ -44,6 +46,7 @@ type Repository interface {
 	CashierDelete(ctx context.Context, id int64) error
 	CashierUpdatePrinterID(ctx context.Context, request CashierUpdatePrinterIDRequest) error
 	CashierDeletePrinterID(ctx context.Context, menuID int64) error
+	CashierRemovePhoto(ctx context.Context, id int64, index int) (*string, error)
 	// @waiter
 
 	WaiterGetMenuList(ctx context.Context, filter Filter) ([]WaiterGetMenuListResponse, error)

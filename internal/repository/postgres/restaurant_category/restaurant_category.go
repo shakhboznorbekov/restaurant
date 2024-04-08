@@ -5,14 +5,14 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/pkg/utils"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/restaurant_category"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/pkg/utils"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/restaurant_category"
 	"time"
 )
 
@@ -29,11 +29,11 @@ func (r Repository) SuperAdminGetList(ctx context.Context, filter restaurant_cat
 	}
 
 	table := "restaurant_category"
-	whereQuery := fmt.Sprintf(` WHERE %s.deleted_at IS NULL`, table)
+	whereQuery := fmt.Sprintf(`WHERE %s.deleted_at IS NULL`, table)
 	countWhereQuery := whereQuery
 
 	if filter.Name != nil {
-		whereQuery += fmt.Sprintf(" AND %s.name ILIKE '%s'", table, "%"+*filter.Name+"%")
+		whereQuery += fmt.Sprintf(" AND %s.name ilike '%s'", table, "%"+*filter.Name+"%")
 	}
 
 	whereQuery += fmt.Sprintf(` ORDER BY %s.created_at DESC`, table)
@@ -78,6 +78,7 @@ func (r Repository) SuperAdminGetList(ctx context.Context, filter restaurant_cat
 			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning restaurantCategory count"), http.StatusBadRequest)
 		}
 	}
+
 	return list, count, nil
 }
 
@@ -129,12 +130,12 @@ func (r Repository) SuperAdminUpdateAll(ctx context.Context, request restaurant_
 	}
 
 	if err = r.ValidateStruct(&request, "ID", "Name"); err != nil {
-		return nil
+		return err
 	}
 
-	q := r.NewUpdate().Table("restaurant_category").Where(" deleted_at IS NULL AND id = ?", request.ID)
+	q := r.NewUpdate().Table("restaurant_category").Where("deleted_at IS NULL AND id = ?", request.ID)
 
-	q.Set(" name = ?", request.Name)
+	q.Set("name = ?", request.Name)
 
 	_, err = q.Exec(ctx)
 	if err != nil {

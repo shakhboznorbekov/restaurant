@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/commands"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/hashing"
-	"github.com/restaurant/internal/service/notification"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/commands"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/hashing"
+	"restu-backend/internal/service/notification"
 	"time"
 )
 
@@ -467,7 +467,7 @@ func (r Repository) SuperAdminSend(ctx context.Context, request notification.Sup
 func (r Repository) ClientGetList(ctx context.Context, filter notification.Filter) ([]notification.ClientGetListResponse, int, error) {
 	claims, err := r.CheckClaims(ctx, auth.RoleClient)
 	if err != nil {
-		claims.UserId = 0
+		return []notification.ClientGetListResponse{}, 0, nil
 	}
 
 	lang := r.GetLang(ctx)
@@ -544,7 +544,7 @@ func (r Repository) ClientGetList(ctx context.Context, filter notification.Filte
 func (r Repository) ClientGetUnseenCount(ctx context.Context) (int, error) {
 	claims, err := r.CheckClaims(ctx, auth.RoleClient)
 	if err != nil {
-		claims.UserId = 0
+		return 0, nil
 	}
 
 	lang := r.GetLang(ctx)
@@ -585,7 +585,7 @@ func (r Repository) ClientSetAsViewed(ctx context.Context, id int64) error {
 func (r Repository) ClientSetAllAsViewed(ctx context.Context) error {
 	claims, err := r.CheckClaims(ctx, auth.RoleClient)
 	if err != nil {
-		return err
+		return nil
 	}
 
 	var ids *pq.Int64Array

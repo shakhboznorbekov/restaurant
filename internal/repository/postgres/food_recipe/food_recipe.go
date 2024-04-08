@@ -1,16 +1,16 @@
 package food_recipe
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/food_recipe"
+	"golang.org/x/net/context"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/food_recipe"
 	"time"
 )
 

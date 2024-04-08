@@ -18,4 +18,8 @@ type Repository interface {
 
 	// @waiter
 	WaiterUpdateStatus(ctx context.Context, ids []int64, status string) error
+
+	// @cashier
+	CashierUpdateStatus(ctx context.Context, id int64, status string) error
+	CashierUpdateStatusByOrderID(ctx context.Context, orderId int64, status string) error
 }

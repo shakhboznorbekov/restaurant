@@ -38,6 +38,7 @@ type SuperAdminGetDetail struct {
 type SuperAdminCreateRequest struct {
 	Name      *string `json:"name" form:"name"`
 	Phone     *string `json:"phone" form:"phone"`
+	Password  *string `json:"password" form:"password"`
 	BirthDate *string `json:"birth_date" form:"birth_date"`
 	Gender    *string `json:"gender" form:"gender"`
 	Role      *string `json:"-" form:"-"`
@@ -49,6 +50,7 @@ type SuperAdminCreateResponse struct {
 	ID        int64      `json:"id" bun:"id,pk,autoincrement"`
 	Name      *string    `json:"name" bun:"name"`
 	Phone     *string    `json:"phone" bun:"phone"`
+	Password  *string    `json:"password" bun:"password"`
 	BirthDate *time.Time `json:"birth_date" bun:"birth_date"`
 	Gender    *string    `json:"gender" bun:"gender"`
 	Role      *string    `json:"-" bun:"role"`
@@ -78,6 +80,7 @@ type ClientCreateResponse struct {
 	ID        int64     `json:"id" bun:"id,pk,autoincrement"`
 	Phone     *string   `json:"phone" bun:"phone"`
 	Role      *string   `json:"role" bun:"role"`
+	Status    *string   `json:"status" bun:"status"`
 	CreatedAt time.Time `json:"-" bun:"created_at"`
 }
 
@@ -101,6 +104,7 @@ type ClientDetail struct {
 type AdminCreateRequest struct {
 	Name         *string `json:"name" form:"name"`
 	Phone        *string `json:"phone" form:"phone"`
+	Password     *string `json:"password" form:"password"`
 	BirthDate    *string `json:"birth_date" form:"birth_date"`
 	Gender       *string `json:"gender" form:"gender"`
 	Role         *string `json:"-" form:"-"`
@@ -114,10 +118,12 @@ type AdminCreateResponse struct {
 	ID           int64      `json:"id" bun:"id,pk,autoincrement"`
 	Name         *string    `json:"name" bun:"name"`
 	Phone        *string    `json:"phone" bun:"phone"`
+	Password     *string    `json:"password" bun:"password"`
 	BirthDate    *time.Time `json:"birth_date" bun:"birth_date"`
 	Gender       *string    `json:"gender" bun:"gender"`
 	Role         *string    `json:"role" bun:"role"`
 	RestaurantID *int64     `json:"-" bun:"restaurant_id"`
+	Status       *string    `json:"status" bun:"status"`
 	CreatedAt    time.Time  `json:"-" bun:"created_at"`
 	CreatedBy    int64      `json:"-" bun:"created_by"`
 }
@@ -155,6 +161,7 @@ type AdminUpdateByRestaurantIDRequest struct {
 type BranchCreateRequest struct {
 	Name      *string `json:"name" form:"name"`
 	Phone     *string `json:"phone" form:"phone"`
+	Password  *string `json:"password" form:"password"`
 	BirthDate *string `json:"birth_date" form:"birth_date"`
 	Gender    *string `json:"gender" form:"gender"`
 	Role      *string `json:"-" form:"-"`
@@ -168,10 +175,12 @@ type BranchCreateResponse struct {
 	ID        int64      `json:"id" bun:"id,pk,autoincrement"`
 	Name      *string    `json:"name" bun:"name"`
 	Phone     *string    `json:"phone" bun:"phone"`
+	Password  *string    `json:"password" bun:"password"`
 	BirthDate *time.Time `json:"birth_date" bun:"birth_date"`
 	Gender    *string    `json:"gender" bun:"gender"`
 	Role      *string    `json:"role" bun:"role"`
 	BranchID  *int64     `json:"-" bun:"branch_id"`
+	Status    *string    `json:"status" bun:"status"`
 	CreatedAt time.Time  `json:"-" bun:"created_at"`
 	CreatedBy int64      `json:"-" bun:"created_by"`
 }

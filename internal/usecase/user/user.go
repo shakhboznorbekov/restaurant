@@ -6,16 +6,16 @@ import (
 	"github.com/restaurant/foundation/web"
 	"github.com/restaurant/internal/auth"
 	"github.com/restaurant/internal/pkg/file"
+	"github.com/restaurant/internal/service/cashier"
 	"github.com/restaurant/internal/service/sms"
 	"github.com/restaurant/internal/service/user"
 	"github.com/restaurant/internal/service/waiter"
+	wwt "github.com/restaurant/internal/service/waiter_work_time"
 	"github.com/robfig/cron/v3"
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"time"
-
-	wwt "github.com/restaurant/internal/service/waiter_work_time"
 )
 
 type UseCase struct {
@@ -82,6 +82,13 @@ func (uu UseCase) SuperAdminCreateUser(ctx context.Context, data user.SuperAdmin
 	if exists {
 		return user.SuperAdminCreateResponse{}, errors.New("phone already exists")
 	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(*data.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return user.SuperAdminCreateResponse{}, web.NewRequestError(errors.Wrap(err, "hashing password"), http.StatusInternalServerError)
+	}
+	hashedPassword := string(hash)
+	data.Password = &hashedPassword
 
 	return uu.user.SuperAdminCreate(ctx, data)
 }
@@ -660,6 +667,10 @@ func (uu UseCase) WaiterGetWeeklyActivityStatistics(ctx context.Context, filter 
 
 func (uu UseCase) WaiterGetWeeklyAcceptedOrdersStatistics(ctx context.Context, filter waiter.EarnedMoneyFilter) (*waiter.GetAcceptedOrdersStatistics, error) {
 	return uu.waiter.WaiterGetWeeklyAcceptedOrdersStatistics(ctx, filter)
+}
+
+func (uu UseCase) WaiterGetWeeklyRatingStatistics(ctx context.Context, filter waiter.Filter) ([]waiter.GetWeeklyRating, error) {
+	return uu.waiter.WaiterGetWeeklyRatingStatistics(ctx, filter)
 }
 
 // CalculateWaitersKPI : is run by robfig/cron in each day at 7:00 a.m

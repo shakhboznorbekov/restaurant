@@ -3,20 +3,24 @@ package branch
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/branch"
-	"github.com/restaurant/internal/service/hashing"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"net/http"
+	"path/filepath"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/branch"
+	"restu-backend/internal/service/hashing"
+	order2 "restu-backend/internal/service/order"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -34,6 +38,10 @@ func (r Repository) AdminGetList(ctx context.Context, filter branch.Filter) ([]b
 
 	table := "branches"
 	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL AND b.restaurant_id = '%d'`, *claims.RestaurantID)
+
+	if filter.HasMenu != nil {
+		whereQuery += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM menus AS m WHERE m.branch_id = b.id)`)
+	}
 	countWhereQuery := whereQuery
 
 	var limitQuery, offsetQuery string
@@ -161,15 +169,16 @@ func (r Repository) AdminCreate(ctx context.Context, request branch.AdminCreateR
 	}
 
 	response := branch.AdminCreateResponse{
-		Name:         request.Name,
-		CategoryID:   request.CategoryID,
-		Location:     request.Location,
-		Photos:       request.PhotosLink,
-		Status:       request.Status,
-		WorkTime:     request.WorkTime,
-		CreatedAt:    time.Now(),
-		CreatedBy:    claims.UserId,
-		RestaurantID: *claims.RestaurantID,
+		Name:                     request.Name,
+		CategoryID:               request.CategoryID,
+		Location:                 request.Location,
+		Photos:                   request.PhotosLink,
+		Status:                   request.Status,
+		WorkTime:                 request.WorkTime,
+		CreatedAt:                time.Now(),
+		CreatedBy:                claims.UserId,
+		RestaurantID:             *claims.RestaurantID,
+		DefaultServicePercentage: request.DefaultServicePercentageID,
 	}
 
 	_, err = r.NewInsert().Model(&response).Exec(ctx)
@@ -319,516 +328,770 @@ func (r Repository) AdminDeleteImage(ctx context.Context, request branch.AdminDe
 	return nil
 }
 
+func (r Repository) AdminUpdateBranchAdmin(ctx context.Context, request branch.AdminUpdateBranchAdmin) error {
+	_, err := r.CheckClaims(ctx, auth.RoleAdmin)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.NewUpdate().Table("users").Set("password = ?", request.Password).Where("branch_id = ?", request.ID).Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // @client
 
-//func (r Repository) ClientGetList(ctx context.Context, filter branch.Filter) ([]branch.ClientGetList, int, error) {
-//	claims, err := r.CheckClaims(ctx, auth.RoleClient)
-//	if err != nil {
-//		claims.UserId = 0
-//	}
-//
-//	table := "branches"
-//	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
-//
-//	if filter.IsLiked != nil {
-//		if *filter.IsLiked {
-//			whereQuery += fmt.Sprintf(` and b.id in (SELECT branch_id FROM branch_likes WHERE user_id = %d)`, claims.UserId)
-//		}
-//	}
-//
-//	countWhereQuery := whereQuery
-//
-//	todayInt := time.Now().Weekday()
-//	var today string
-//	switch todayInt {
-//	case 1:
-//		today = "Monday"
-//	case 2:
-//		today = "Tuesday"
-//	case 3:
-//		today = "Wednesday"
-//	case 4:
-//		today = "Thursday"
-//	case 5:
-//		today = "Friday"
-//	case 6:
-//		today = "Saturday"
-//	case 7:
-//		today = "Sunday"
-//	}
-//
-//	var limitQuery, offsetQuery string
-//	if filter.Page != nil && filter.Limit != nil {
-//		offset := (*filter.Page - 1) * (*filter.Limit)
-//		filter.Offset = &offset
-//	}
-//	if filter.Limit != nil {
-//		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
-//	}
-//	if filter.Offset != nil {
-//		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
-//	}
-//
-//	whereQuery += fmt.Sprintf(" ORDER BY b.rate desc %s %s", limitQuery, offsetQuery)
-//
-//	query := fmt.Sprintf(`
-//					SELECT
-//					    b.id,
-//					    b.status,
-//					    b.location,
-//					    b.photos,
-//					    b.work_time->>'%s' as work_time_today,
-//					    b.name,
-//					    b.category_id,
-//					    rc.name as category_name,
-//					    br.point,
-//					    b.rate,
-//					    CASE WHEN (SELECT id FROM branch_likes WHERE branch_id = b.id AND user_id = %d) IS NOT NULL THEN true ELSE false END AS is_liked
-//					FROM
-//					    branches as b
-//					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
-//					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
-//					%s`, today, claims.UserId, whereQuery)
-//
-//	list := make([]branch.ClientGetList, 0)
-//
-//	rows, err := r.QueryContext(ctx, query)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
-//	}
-//
-//	err = r.ScanRows(ctx, rows, &list)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
-//	}
-//
-//	countQuery := fmt.Sprintf(`
-//		SELECT
-//			count(id)
-//		FROM
-//		    %s as b
-//		%s
-//	`, table, countWhereQuery)
-//	countRows, err := r.QueryContext(ctx, countQuery)
-//	if err == sql.ErrNoRows {
-//		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
-//	}
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
-//	}
-//
-//	count := 0
-//
-//	for countRows.Next() {
-//		if err = countRows.Scan(&count); err != nil {
-//			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
-//		}
-//	}
-//
-//	for k, v := range list {
-//		var basePhotos pq.StringArray
-//		for _, v1 := range *v.Photos {
-//			baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
-//			basePhotos = append(basePhotos, baseLink)
-//		}
-//		list[k].Photos = &basePhotos
-//	}
-//
-//	return list, count, nil
-//}
-//
-//func (r Repository) ClientGetMapList(ctx context.Context, filter branch.Filter) ([]branch.ClientGetMapList, int, error) {
-//	//_, err := r.CheckClaims(ctx, auth.RoleClient)
-//	//if err != nil {
-//	//	return nil, 0, err
-//	//}
-//
-//	table := "branches"
-//	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
-//
-//	countWhereQuery := whereQuery
-//
-//	var limitQuery, offsetQuery string
-//	if filter.Page != nil && filter.Limit != nil {
-//		offset := (*filter.Page - 1) * (*filter.Limit)
-//		filter.Offset = &offset
-//	}
-//	if filter.Limit != nil {
-//		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
-//	}
-//	if filter.Offset != nil {
-//		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
-//	}
-//
-//	whereQuery += fmt.Sprintf(" ORDER BY b.rate desc %s %s", limitQuery, offsetQuery)
-//
-//	query := fmt.Sprintf(`
-//					SELECT
-//					    b.id,
-//					    b.status,
-//					    b.location->>'lat' as lat,
-//					    b.location->>'lon' as lon,
-//					    b.name,
-//					    b.category_id,
-//					    r.logo as logo
-//					FROM
-//					    branches as b
-//					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
-//					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
-//					LEFT OUTER JOIN restaurants r ON r.id = b.restaurant_id
-//					%s`, whereQuery)
-//
-//	list := make([]branch.ClientGetMapList, 0)
-//
-//	rows, err := r.QueryContext(ctx, query)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
-//	}
-//
-//	err = r.ScanRows(ctx, rows, &list)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
-//	}
-//
-//	countQuery := fmt.Sprintf(`
-//		SELECT
-//			count(id)
-//		FROM
-//		    %s as b
-//		%s
-//	`, table, countWhereQuery)
-//	countRows, err := r.QueryContext(ctx, countQuery)
-//	if err == sql.ErrNoRows {
-//		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
-//	}
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
-//	}
-//
-//	count := 0
-//
-//	for countRows.Next() {
-//		if err = countRows.Scan(&count); err != nil {
-//			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
-//		}
-//	}
-//
-//	for k, v := range list {
-//		if v.Logo != nil {
-//			baseLink := hashing.GenerateHash(r.ServerBaseUrl, *v.Logo)
-//			list[k].Logo = &baseLink
-//		}
-//	}
-//
-//	return list, count, nil
-//}
-//
-//func (r Repository) ClientGetDetail(ctx context.Context, id int64) (branch.ClientGetDetail, error) {
-//	claims, err := r.CheckClaims(ctx, auth.RoleClient)
-//	if err != nil {
-//		claims.UserId = 0
-//	}
-//
-//	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL AND b.id = '%d'`, id)
-//
-//	todayInt := time.Now().Weekday()
-//	var today string
-//	switch todayInt {
-//	case 1:
-//		today = "Monday"
-//	case 2:
-//		today = "Tuesday"
-//	case 3:
-//		today = "Wednesday"
-//	case 4:
-//		today = "Thursday"
-//	case 5:
-//		today = "Friday"
-//	case 6:
-//		today = "Saturday"
-//	case 7:
-//		today = "Sunday"
-//	}
-//
-//	query := fmt.Sprintf(`
-//					SELECT
-//					    b.id,
-//					    b.status,
-//					    b.location,
-//					    b.photos,
-//					    b.work_time->>'%s' as work_time_today,
-//					    b.name,
-//					    b.rate,
-//					    r.name as restaurant_name,
-//					    r.logo as restaurant_logo
-//					FROM
-//					    branches as b
-//					Left Outer Join restaurants as r on r.id = b.restaurant_id
-//					%s`, today, whereQuery)
-//
-//	var detail branch.ClientGetDetail
-//
-//	location := make([]byte, 0)
-//	err = r.QueryRowContext(ctx, query).Scan(
-//		&detail.ID, &detail.Status, &location, &detail.Photos,
-//		&detail.WorkTimeToday, &detail.Name, &detail.Rate,
-//		&detail.RestaurantName, &detail.RestaurantLogo,
-//	)
-//	if err != nil {
-//		return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
-//	}
-//
-//	if location != nil {
-//		err = json.Unmarshal(location, &detail.Location)
-//		if err != nil {
-//			return branch.ClientGetDetail{}, errors.Wrap(err, "location unmarshal")
-//		}
-//	}
-//	if detail.Photos != nil && len(*detail.Photos) > 0 {
-//		var photoLinks pq.StringArray
-//		for _, v := range *detail.Photos {
-//			linkP := hashing.GenerateHash(r.ServerBaseUrl, v)
-//			photoLinks = append(photoLinks, linkP)
-//		}
-//		detail.Photos = &photoLinks
-//	}
-//	if detail.RestaurantLogo != nil {
-//		logoR := hashing.GenerateHash(r.ServerBaseUrl, *detail.RestaurantLogo)
-//		detail.RestaurantLogo = &logoR
-//	}
-//
-//	// ----------------------------food-category-----------------------------------------------------
-//
-//	//categoryQuery := fmt.Sprintf(`
-//	//				SELECT
-//	//				    fc.id,
-//	//				    fc.name
-//	//				FROM
-//	//				    food_category as fc
-//	//				LEFT OUTER JOIN foods as f ON f.category_id = fc.id
-//	//				WHERE fc.deleted_at IS NULL AND f.branch_id = '%d'
-//	//				GROUP BY fc.id, fc.name`, detail.ID)
-//	//
-//	//categoryDetail := make([]foodCategory.ClientGetList, 0)
-//	//rows, err := r.QueryContext(ctx, categoryQuery)
-//	//if err != nil {
-//	//	return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "select food_category"), http.StatusInternalServerError)
-//	//}
-//	//
-//	//err = r.ScanRows(ctx, rows, &categoryDetail)
-//	//if err != nil {
-//	//	return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "scanning food_category"), http.StatusBadRequest)
-//	//}
-//	//
-//	//if categoryDetail != nil && len(categoryDetail) > 0 {
-//	//	detail.Category = categoryDetail
-//	//}
-//
-//	// --------------------------order----------------------------------------------------------------
-//
-//	orderQuery := fmt.Sprintf(`
-//					SELECT
-//					    o.id,
-//					    o.number as order_number,
-//					    o.status,
-//					    o.table_id,
-//					    t.number as table_number,
-//                        t.branch_id as branch_id,
-//                        (
-//                        	select
-//                        	    sum(m.new_price*om.count)
-//                        	from menus m
-//                        	join order_menu om on m.id = om.menu_id
-//                        	where om.order_id=o.id
-//                        	  and om.deleted_at isnull
-//                        ) as price,
-//					    CASE WHEN accepted_at IS NULL THEN false ELSE true END AS accept
-//					FROM
-//					    orders AS o
-//					LEFT OUTER JOIN tables AS t ON t.id = o.table_id
-//					WHERE o.user_id='%d' AND o.status='NEW'`, claims.UserId)
-//
-//	orderDetail := make([]order2.ClientGetDetail, 0)
-//	orderRows, err := r.QueryContext(ctx, orderQuery)
-//	if err != nil {
-//		return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "select order"), http.StatusInternalServerError)
-//	}
-//
-//	err = r.ScanRows(ctx, orderRows, &orderDetail)
-//	if err != nil {
-//		return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "scanning order"), http.StatusBadRequest)
-//	}
-//	if orderDetail != nil && len(orderDetail) > 0 {
-//		detail.Orders = make([]order2.ClientGetDetail, 0)
-//		detail.NewOrders = make([]order2.ClientGetDetail, 0)
-//		for _, v := range orderDetail {
-//			if *v.BranchID == id {
-//				if v.Accept {
-//					detail.Orders = append(detail.Orders, v)
-//				} else {
-//					detail.NewOrders = append(detail.NewOrders, v)
-//				}
-//			}
-//		}
-//		canOrder := false
-//		detail.CanOrder = &canOrder
-//		if len(detail.Orders) == 0 {
-//			detail.Orders = nil
-//		}
-//	} else {
-//		detail.Orders = nil
-//		canOrder := true
-//		detail.CanOrder = &canOrder
-//	}
-//
-//	// --------------------------end_of_process--------------------------------------------------------
-//
-//	if detail.Name != nil && detail.RestaurantName != nil {
-//		if strings.Compare(*detail.Name, *detail.RestaurantName) == 0 {
-//			detail.Name = nil
-//		}
-//	}
-//
-//	return detail, nil
-//}
-//
-//func (r Repository) ClientNearlyBranchGetList(ctx context.Context, filter branch.Filter) ([]branch.ClientGetList, int, error) {
-//	claims, err := r.CheckClaims(ctx, auth.RoleClient)
-//	if err != nil {
-//		claims.UserId = 0
-//	}
-//
-//	table := "branches"
-//	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
-//	countWhereQuery := whereQuery
-//
-//	todayInt := time.Now().Weekday()
-//	var today string
-//	switch todayInt {
-//	case 1:
-//		today = "Monday"
-//	case 2:
-//		today = "Tuesday"
-//	case 3:
-//		today = "Wednesday"
-//	case 4:
-//		today = "Thursday"
-//	case 5:
-//		today = "Friday"
-//	case 6:
-//		today = "Saturday"
-//	case 7:
-//		today = "Sunday"
-//	}
-//
-//	var limitQuery, offsetQuery string
-//	if filter.Page != nil && filter.Limit != nil {
-//		offset := (*filter.Page - 1) * (*filter.Limit)
-//		filter.Offset = &offset
-//	}
-//	if filter.Limit != nil {
-//		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
-//	}
-//	if filter.Offset != nil {
-//		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
-//	}
-//
-//	whereQuery += fmt.Sprintf(" ORDER BY distance %s %s", limitQuery, offsetQuery)
-//
-//	query := fmt.Sprintf(`
-//					SELECT
-//					    b.id,
-//					    b.status,
-//					    b.location,
-//					    b.photos,
-//					    b.work_time->>'%s' as work_time_today,
-//					    b.name,
-//					    b.category_id,
-//					    rc.name as category_name,
-//					    b.rate,
-//					    CASE WHEN (SELECT id FROM branch_likes WHERE branch_id = b.id AND user_id = %d) IS NOT NULL THEN true ELSE false END AS is_liked,
-//					    ST_DistanceSphere(
-//						   ST_SetSRID(ST_MakePoint(CAST(b.location->>'lon' AS float), CAST(b.location->>'lat' AS float)), 4326),
-//						   ST_SetSRID(ST_MakePoint(%v, %v), 4326)
-//					    ) as distance
-//					FROM
-//					    branches as b
-//					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
-//					%s`, today, claims.UserId, *filter.Lon, *filter.Lat, whereQuery)
-//
-//	list := make([]branch.ClientGetList, 0)
-//
-//	rows, err := r.QueryContext(ctx, query)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
-//	}
-//
-//	err = r.ScanRows(ctx, rows, &list)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
-//	}
-//
-//	countQuery := fmt.Sprintf(`
-//		SELECT
-//			count(id)
-//		FROM
-//		    %s as b
-//		%s
-//	`, table, countWhereQuery)
-//	countRows, err := r.QueryContext(ctx, countQuery)
-//	if err == sql.ErrNoRows {
-//		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
-//	}
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
-//	}
-//
-//	count := 0
-//	for countRows.Next() {
-//		if err = countRows.Scan(&count); err != nil {
-//			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
-//		}
-//	}
-//
-//	for k, v := range list {
-//		var basePhotos pq.StringArray
-//		for _, v1 := range *v.Photos {
-//			baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
-//			basePhotos = append(basePhotos, baseLink)
-//		}
-//		list[k].Photos = &basePhotos
-//	}
-//
-//	return list, count, nil
-//}
-//
-//func (r Repository) ClientUpdateColumns(ctx context.Context, request branch.ClientUpdateRequest) error {
-//	claims, err := r.CheckClaims(ctx, auth.RoleClient)
-//	if err != nil {
-//		return nil
-//	}
-//
-//	if err = r.ValidateStruct(&request, "ID, IsLiked"); err != nil {
-//		return err
-//	}
-//	if *request.IsLiked {
-//		branchLikes := entity.BranchLikes{
-//			BranchID: request.ID,
-//			UserID:   claims.UserId,
-//		}
-//		_, err = r.NewInsert().Model(&branchLikes).Exec(ctx)
-//		if err != nil {
-//			return web.NewRequestError(errors.Wrap(err, "updating branch_likes"), http.StatusBadRequest)
-//		}
-//	} else {
-//		_, err = r.NewDelete().Table("branch_likes").Where("branch_id = ? AND user_id = ?", request.ID, claims.UserId).Exec(ctx)
-//		if err != nil {
-//			return web.NewRequestError(errors.Wrap(err, "updating branch_likes"), http.StatusBadRequest)
-//		}
-//	}
-//
-//	return nil
-//}
+func (r Repository) ClientGetList(ctx context.Context, filter branch.Filter) ([]branch.ClientGetList, int, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		claims.UserId = 0
+	}
+
+	table := "branches"
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
+
+	if filter.IsLiked != nil {
+		if *filter.IsLiked {
+			whereQuery += fmt.Sprintf(` and b.id in (SELECT branch_id FROM branch_likes WHERE user_id = %d)`, claims.UserId)
+		}
+	}
+
+	countWhereQuery := whereQuery
+
+	todayInt := time.Now().Weekday()
+	var today string
+	switch todayInt {
+	case 1:
+		today = "Monday"
+	case 2:
+		today = "Tuesday"
+	case 3:
+		today = "Wednesday"
+	case 4:
+		today = "Thursday"
+	case 5:
+		today = "Friday"
+	case 6:
+		today = "Saturday"
+	case 7:
+		today = "Sunday"
+	}
+
+	var limitQuery, offsetQuery string
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		filter.Offset = &offset
+	}
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
+	}
+
+	whereQuery += fmt.Sprintf(" ORDER BY b.rate desc %s %s", limitQuery, offsetQuery)
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    b.status, 
+					    b.location, 
+					    b.photos, 
+					    b.work_time->>'%s' as work_time_today,
+					    b.name,
+					    b.category_id,
+					    rc.name as category_name,
+					    br.point,
+					    b.rate,
+					    CASE WHEN (SELECT id FROM branch_likes WHERE branch_id = b.id AND user_id = %d) IS NOT NULL THEN true ELSE false END AS is_liked
+					FROM 
+					    branches as b
+					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
+					%s`, today, claims.UserId, whereQuery)
+
+	list := make([]branch.ClientGetList, 0)
+
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, rows, &list)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
+	}
+
+	countQuery := fmt.Sprintf(`
+		SELECT
+			count(id)
+		FROM
+		    %s as b
+		%s
+	`, table, countWhereQuery)
+	countRows, err := r.QueryContext(ctx, countQuery)
+	if err == sql.ErrNoRows {
+		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
+	}
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
+	}
+
+	count := 0
+
+	for countRows.Next() {
+		if err = countRows.Scan(&count); err != nil {
+			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
+		}
+	}
+
+	for k, v := range list {
+		var basePhotos pq.StringArray
+		for _, v1 := range *v.Photos {
+			baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
+			basePhotos = append(basePhotos, baseLink)
+		}
+		list[k].Photos = &basePhotos
+	}
+
+	return list, count, nil
+}
+
+func (r Repository) ClientGetMapList(ctx context.Context, filter branch.Filter) ([]branch.ClientGetMapList, int, error) {
+	//_, err := r.CheckClaims(ctx, auth.RoleClient)
+	//if err != nil {
+	//	return nil, 0, err
+	//}
+
+	table := "branches"
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
+
+	countWhereQuery := whereQuery
+
+	var limitQuery, offsetQuery string
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		filter.Offset = &offset
+	}
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
+	}
+
+	whereQuery += fmt.Sprintf(" ORDER BY b.rate desc %s %s", limitQuery, offsetQuery)
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    b.status, 
+					    b.location->>'lat' as lat, 
+					    b.location->>'lon' as lon, 
+					    b.name,
+					    b.category_id,
+					    r.logo as logo
+					FROM 
+					    branches as b
+					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
+					LEFT OUTER JOIN restaurants r ON r.id = b.restaurant_id
+					%s`, whereQuery)
+
+	list := make([]branch.ClientGetMapList, 0)
+
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, rows, &list)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
+	}
+
+	countQuery := fmt.Sprintf(`
+		SELECT
+			count(id)
+		FROM
+		    %s as b
+		%s
+	`, table, countWhereQuery)
+	countRows, err := r.QueryContext(ctx, countQuery)
+	if err == sql.ErrNoRows {
+		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
+	}
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
+	}
+
+	count := 0
+
+	for countRows.Next() {
+		if err = countRows.Scan(&count); err != nil {
+			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
+		}
+	}
+
+	for k, v := range list {
+		if v.Logo != nil {
+			baseLink := hashing.GenerateHash(r.ServerBaseUrl, *v.Logo)
+			list[k].Logo = &baseLink
+		}
+	}
+
+	return list, count, nil
+}
+
+func (r Repository) ClientGetDetail(ctx context.Context, id int64) (branch.ClientGetDetail, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		claims.UserId = 0
+	}
+
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL AND b.id = '%d'`, id)
+
+	todayInt := time.Now().Weekday()
+	var today string
+	switch todayInt {
+	case 1:
+		today = "Monday"
+	case 2:
+		today = "Tuesday"
+	case 3:
+		today = "Wednesday"
+	case 4:
+		today = "Thursday"
+	case 5:
+		today = "Friday"
+	case 6:
+		today = "Saturday"
+	case 7:
+		today = "Sunday"
+	}
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    b.status, 
+					    b.location, 
+					    b.photos, 
+					    b.work_time->>'%s' as work_time_today,
+					    b.name,
+					    b.rate,
+					    r.name as restaurant_name,
+					    r.logo as restaurant_logo
+					FROM 
+					    branches as b
+					Left Outer Join restaurants as r on r.id = b.restaurant_id
+					%s`, today, whereQuery)
+
+	var detail branch.ClientGetDetail
+
+	location := make([]byte, 0)
+	err = r.QueryRowContext(ctx, query).Scan(
+		&detail.ID, &detail.Status, &location, &detail.Photos,
+		&detail.WorkTimeToday, &detail.Name, &detail.Rate,
+		&detail.RestaurantName, &detail.RestaurantLogo,
+	)
+	if err != nil {
+		return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	if location != nil {
+		err = json.Unmarshal(location, &detail.Location)
+		if err != nil {
+			return branch.ClientGetDetail{}, errors.Wrap(err, "location unmarshal")
+		}
+	}
+	if detail.Photos != nil && len(*detail.Photos) > 0 {
+		var photoLinks pq.StringArray
+		for _, v := range *detail.Photos {
+			linkP := hashing.GenerateHash(r.ServerBaseUrl, v)
+			photoLinks = append(photoLinks, linkP)
+		}
+		detail.Photos = &photoLinks
+	}
+	if detail.RestaurantLogo != nil {
+		logoR := hashing.GenerateHash(r.ServerBaseUrl, *detail.RestaurantLogo)
+		detail.RestaurantLogo = &logoR
+	}
+
+	// ----------------------------food-category-----------------------------------------------------
+
+	//categoryQuery := fmt.Sprintf(`
+	//				SELECT
+	//				    fc.id,
+	//				    fc.name
+	//				FROM
+	//				    food_category as fc
+	//				LEFT OUTER JOIN foods as f ON f.category_id = fc.id
+	//				WHERE fc.deleted_at IS NULL AND f.branch_id = '%d'
+	//				GROUP BY fc.id, fc.name`, detail.ID)
+	//
+	//categoryDetail := make([]foodCategory.ClientGetList, 0)
+	//rows, err := r.QueryContext(ctx, categoryQuery)
+	//if err != nil {
+	//	return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "select food_category"), http.StatusInternalServerError)
+	//}
+	//
+	//err = r.ScanRows(ctx, rows, &categoryDetail)
+	//if err != nil {
+	//	return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "scanning food_category"), http.StatusBadRequest)
+	//}
+	//
+	//if categoryDetail != nil && len(categoryDetail) > 0 {
+	//	detail.Category = categoryDetail
+	//}
+
+	// --------------------------order----------------------------------------------------------------
+
+	orderQuery := fmt.Sprintf(`
+					SELECT 
+					    o.id,
+					    o.number as order_number,
+					    o.status,
+					    o.table_id,
+					    t.number as table_number,
+                        t.branch_id as branch_id,
+                        (
+                        	select 
+                        	    sum(m.new_price*om.count) 
+                        	from menus m 
+                        	join order_menu om on m.id = om.menu_id 
+                        	where om.order_id=o.id 
+                        	  and om.deleted_at isnull 
+                        ) as price,
+					    CASE WHEN accepted_at IS NULL THEN false ELSE true END AS accept
+					FROM 
+					    orders AS o
+					LEFT OUTER JOIN tables AS t ON t.id = o.table_id
+					WHERE o.user_id='%d' AND o.status='NEW'`, claims.UserId)
+
+	orderDetail := make([]order2.ClientGetDetail, 0)
+	orderRows, err := r.QueryContext(ctx, orderQuery)
+	if err != nil {
+		return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "select order"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, orderRows, &orderDetail)
+	if err != nil {
+		return branch.ClientGetDetail{}, web.NewRequestError(errors.Wrap(err, "scanning order"), http.StatusBadRequest)
+	}
+	if orderDetail != nil && len(orderDetail) > 0 {
+		detail.Orders = make([]order2.ClientGetDetail, 0)
+		detail.NewOrders = make([]order2.ClientGetDetail, 0)
+		for _, v := range orderDetail {
+			if *v.BranchID == id {
+				if v.Accept {
+					detail.Orders = append(detail.Orders, v)
+				} else {
+					detail.NewOrders = append(detail.NewOrders, v)
+				}
+			}
+		}
+		canOrder := false
+		detail.CanOrder = &canOrder
+		if len(detail.Orders) == 0 {
+			detail.Orders = nil
+		}
+	} else {
+		detail.Orders = nil
+		canOrder := true
+		detail.CanOrder = &canOrder
+	}
+
+	// --------------------------end_of_process--------------------------------------------------------
+
+	if detail.Name != nil && detail.RestaurantName != nil {
+		if strings.Compare(*detail.Name, *detail.RestaurantName) == 0 {
+			detail.Name = nil
+		}
+	}
+
+	return detail, nil
+}
+
+func (r Repository) ClientNearlyBranchGetList(ctx context.Context, filter branch.Filter) ([]branch.ClientGetList, int, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		claims.UserId = 0
+	}
+
+	table := "branches"
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
+	countWhereQuery := whereQuery
+
+	todayInt := time.Now().Weekday()
+	var today string
+	switch todayInt {
+	case 1:
+		today = "Monday"
+	case 2:
+		today = "Tuesday"
+	case 3:
+		today = "Wednesday"
+	case 4:
+		today = "Thursday"
+	case 5:
+		today = "Friday"
+	case 6:
+		today = "Saturday"
+	case 7:
+		today = "Sunday"
+	}
+
+	var limitQuery, offsetQuery string
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		filter.Offset = &offset
+	}
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
+	}
+
+	whereQuery += fmt.Sprintf(" ORDER BY distance %s %s", limitQuery, offsetQuery)
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    b.status, 
+					    b.location, 
+					    b.photos, 
+					    b.work_time->>'%s' as work_time_today,
+					    b.name,
+					    b.category_id,
+					    rc.name as category_name,
+					    b.rate,
+					    CASE WHEN (SELECT id FROM branch_likes WHERE branch_id = b.id AND user_id = %d) IS NOT NULL THEN true ELSE false END AS is_liked,
+					    ST_DistanceSphere(
+						   ST_SetSRID(ST_MakePoint(CAST(b.location->>'lon' AS float), CAST(b.location->>'lat' AS float)), 4326), 
+						   ST_SetSRID(ST_MakePoint(%v, %v), 4326)
+					    ) as distance
+					FROM 
+					    branches as b
+					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+					%s`, today, claims.UserId, *filter.Lon, *filter.Lat, whereQuery)
+
+	list := make([]branch.ClientGetList, 0)
+
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, rows, &list)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
+	}
+
+	countQuery := fmt.Sprintf(`
+		SELECT
+			count(id)
+		FROM
+		    %s as b
+		%s
+	`, table, countWhereQuery)
+	countRows, err := r.QueryContext(ctx, countQuery)
+	if err == sql.ErrNoRows {
+		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
+	}
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
+	}
+
+	count := 0
+	for countRows.Next() {
+		if err = countRows.Scan(&count); err != nil {
+			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
+		}
+	}
+
+	for k, v := range list {
+		var basePhotos pq.StringArray
+		for _, v1 := range *v.Photos {
+			baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
+			basePhotos = append(basePhotos, baseLink)
+		}
+		list[k].Photos = &basePhotos
+	}
+
+	return list, count, nil
+}
+
+func (r Repository) ClientUpdateColumns(ctx context.Context, request branch.ClientUpdateRequest) error {
+	claims, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		return nil
+	}
+
+	if err = r.ValidateStruct(&request, "ID, IsLiked"); err != nil {
+		return err
+	}
+	if *request.IsLiked {
+		branchLikes := entity.BranchLikes{
+			BranchID: request.ID,
+			UserID:   claims.UserId,
+		}
+		_, err = r.NewInsert().Model(&branchLikes).Exec(ctx)
+		if err != nil {
+			return web.NewRequestError(errors.Wrap(err, "updating branch_likes"), http.StatusBadRequest)
+		}
+	} else {
+		_, err = r.NewDelete().Table("branch_likes").Where("branch_id = ? AND user_id = ?", request.ID, claims.UserId).Exec(ctx)
+		if err != nil {
+			return web.NewRequestError(errors.Wrap(err, "updating branch_likes"), http.StatusBadRequest)
+		}
+	}
+
+	return nil
+}
+
+func (r Repository) ClientGetListByCategoryID(ctx context.Context, filter branch.Filter, CategoryID int64) ([]branch.ClientGetList, int, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		claims.UserId = 0
+	}
+
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL AND b.id in (SELECT branch_id FROM menus WHERE category_id = %d GROUP BY branch_id) `, CategoryID)
+
+	countWhereQuery := whereQuery
+
+	todayInt := time.Now().Weekday()
+	var today string
+	switch todayInt {
+	case 1:
+		today = "Monday"
+	case 2:
+		today = "Tuesday"
+	case 3:
+		today = "Wednesday"
+	case 4:
+		today = "Thursday"
+	case 5:
+		today = "Friday"
+	case 6:
+		today = "Saturday"
+	case 7:
+		today = "Sunday"
+	}
+
+	var limitQuery, offsetQuery string
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		filter.Offset = &offset
+	}
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
+	}
+
+	whereQuery += fmt.Sprintf(" ORDER BY b.rate desc %s %s", limitQuery, offsetQuery)
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    b.status, 
+					    b.location, 
+					    b.photos, 
+					    b.work_time->>'%s' as work_time_today,
+					    b.name,
+					    b.category_id,
+					    rc.name as category_name,
+					    br.point,
+					    b.rate,
+					    CASE WHEN (SELECT id FROM branch_likes WHERE branch_id = b.id AND user_id = %d) IS NOT NULL THEN true ELSE false END AS is_liked
+					FROM 
+					    branches as b
+					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
+					%s`, today, claims.UserId, whereQuery)
+
+	list := make([]branch.ClientGetList, 0)
+
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, rows, &list)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
+	}
+
+	countQuery := fmt.Sprintf(`
+		SELECT
+			count(b.id)
+		FROM
+		   branches as b
+					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
+		%s
+	`, countWhereQuery)
+	countRows, err := r.QueryContext(ctx, countQuery)
+	if err == sql.ErrNoRows {
+		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
+	}
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
+	}
+
+	count := 0
+
+	for countRows.Next() {
+		if err = countRows.Scan(&count); err != nil {
+			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
+		}
+	}
+
+	for k, v := range list {
+		var basePhotos pq.StringArray
+		for _, v1 := range *v.Photos {
+			baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
+			basePhotos = append(basePhotos, baseLink)
+		}
+		list[k].Photos = &basePhotos
+	}
+
+	return list, count, nil
+}
+
+func (r Repository) ClientAddSearchCount(ctx context.Context, branchID int64) error {
+	_, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		return err
+	}
+
+	q := r.NewUpdate().Table("branches").Where("deleted_at IS NULL AND id = ?",
+		branchID)
+
+	q.Set("search_count = search_count + 1")
+
+	_, err = q.Exec(ctx)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "updating branch"), http.StatusBadRequest)
+	}
+
+	return nil
+}
+
+func (r Repository) ClientGetListOrderSearchCount(ctx context.Context, filter branch.Filter) ([]branch.ClientGetList, int, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleClient)
+	if err != nil {
+		claims.UserId = 0
+	}
+
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
+	countWhereQuery := whereQuery
+
+	todayInt := time.Now().Weekday()
+	var today string
+	switch todayInt {
+	case 1:
+		today = "Monday"
+	case 2:
+		today = "Tuesday"
+	case 3:
+		today = "Wednesday"
+	case 4:
+		today = "Thursday"
+	case 5:
+		today = "Friday"
+	case 6:
+		today = "Saturday"
+	case 7:
+		today = "Sunday"
+	}
+
+	var limitQuery, offsetQuery string
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		filter.Offset = &offset
+	}
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
+	}
+
+	whereQuery += fmt.Sprintf(" ORDER BY b.search_count desc %s %s", limitQuery, offsetQuery)
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    b.status, 
+					    b.location, 
+					    b.photos, 
+					    b.work_time->>'%s' as work_time_today,
+					    b.name,
+					    b.category_id,
+					    rc.name as category_name,
+					    br.point,
+					    b.rate,
+					    CASE WHEN (SELECT id FROM branch_likes WHERE branch_id = b.id AND user_id = %d) IS NOT NULL THEN true ELSE false END AS is_liked
+					FROM 
+					    branches as b
+					LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+					LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
+					%s`, today, claims.UserId, whereQuery)
+
+	list := make([]branch.ClientGetList, 0)
+
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, rows, &list)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branches"), http.StatusBadRequest)
+	}
+
+	countQuery := fmt.Sprintf(`
+		SELECT
+			count(b.id)
+		FROM
+			    branches as b
+			LEFT OUTER JOIN restaurant_category as rc ON rc.id = b.category_id
+			LEFT OUTER JOIN branch_reviews br on b.id = br.branch_id
+		%s
+	`, countWhereQuery)
+	countRows, err := r.QueryContext(ctx, countQuery)
+	if err == sql.ErrNoRows {
+		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusNotFound)
+	}
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting branch"), http.StatusBadRequest)
+	}
+
+	count := 0
+
+	for countRows.Next() {
+		if err = countRows.Scan(&count); err != nil {
+			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning branch count"), http.StatusBadRequest)
+		}
+	}
+
+	for k, v := range list {
+		var basePhotos pq.StringArray
+		for _, v1 := range *v.Photos {
+			baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
+			basePhotos = append(basePhotos, baseLink)
+		}
+		list[k].Photos = &basePhotos
+	}
+
+	return list, count, nil
+}
 
 // @branch
 
@@ -859,7 +1122,47 @@ func (r Repository) BranchGetDetail(ctx context.Context, id int64) (branch.Branc
 	}
 
 	if detail.Logo != nil {
-		logoR := hashing.GenerateHash(r.ServerBaseUrl, *detail.Logo)
+		//logoR := hashing.GenerateHash(r.ServerBaseUrl, *detail.Logo)
+		absPath, _ := filepath.Abs("")
+		logoR := absPath + "/" + *detail.Logo
+		detail.Logo = &logoR
+	}
+
+	return detail, nil
+}
+
+// @branch
+
+func (r Repository) CashierGetDetail(ctx context.Context, id int64) (branch.CashierGetDetail, error) {
+	_, err := r.CheckClaims(ctx, auth.RoleCashier)
+	if err != nil {
+		return branch.CashierGetDetail{}, err
+	}
+
+	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL AND b.id = '%d'`, id)
+
+	query := fmt.Sprintf(`
+					SELECT 
+					    b.id, 
+					    r.logo as restaurant_logo
+					FROM 
+					    branches as b
+					Left Outer Join restaurants as r on r.id = b.restaurant_id
+					%s`, whereQuery)
+
+	var detail branch.CashierGetDetail
+
+	err = r.QueryRowContext(ctx, query).Scan(
+		&detail.ID, &detail.Logo,
+	)
+	if err != nil {
+		return branch.CashierGetDetail{}, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	if detail.Logo != nil {
+		//logoR := hashing.GenerateHash(r.ServerBaseUrl, *detail.Logo)
+		absPath, _ := filepath.Abs("")
+		logoR := absPath + "/" + *detail.Logo
 		detail.Logo = &logoR
 	}
 
@@ -890,7 +1193,7 @@ func (r Repository) BranchGetToken(ctx context.Context) (branch.BranchGetToken, 
 	%s`, whereQuery)
 	response := branch.BranchGetToken{}
 	var expired bool
-	err = r.QueryRowContext(ctx, query).Scan(response.Token, response.TokenExpiredAt, &expired)
+	err = r.QueryRowContext(ctx, query).Scan(&response.Token, &response.TokenExpiredAt, &expired)
 	if err != nil {
 		return branch.BranchGetToken{}, web.NewRequestError(errors.Wrap(err, "scan branch"), http.StatusNotImplemented)
 	}

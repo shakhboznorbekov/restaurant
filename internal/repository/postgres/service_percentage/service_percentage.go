@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/service_percentage"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/service_percentage"
 	"time"
 )
 
@@ -122,7 +122,7 @@ func (r Repository) AdminCreate(ctx context.Context, request service_percentage.
 		BranchID:  claims.BranchID,
 	}
 
-	_, err = r.NewInsert().Model(&response).Exec(ctx)
+	_, err = r.NewInsert().Model(&response).Returning("id").Exec(ctx, &response.ID)
 	if err != nil {
 		return service_percentage.AdminCreateResponse{}, web.NewRequestError(errors.Wrap(err, "creating service_percentage"), http.StatusBadRequest)
 	}
@@ -152,8 +152,55 @@ func (r Repository) AdminUpdateAll(ctx context.Context, request service_percenta
 	return nil
 }
 
+func (r Repository) AdminUpdateBranchID(ctx context.Context, request service_percentage.AdminUpdateBranchRequest) error {
+
+	err := r.ValidateStruct(&request, "ID", "BranchID")
+	if err != nil {
+		return err
+	}
+
+	q := r.NewUpdate().Table("service_percentage").Where("deleted_at IS NULL AND id = ? ", request.ID)
+
+	q.Set("branch_id = ?", request.BranchID)
+
+	_, err = q.Exec(ctx)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "updating service_percentage"), http.StatusBadRequest)
+	}
+
+	return nil
+}
+
 func (r Repository) AdminDelete(ctx context.Context, id int64) error {
 	return r.DeleteRow(ctx, "service_percentage", id, auth.RoleBranch)
+}
+
+// branch
+
+func (r Repository) BranchCreate(ctx context.Context, request service_percentage.AdminCreateRequest) (service_percentage.AdminCreateResponse, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleAdmin)
+	if err != nil {
+		return service_percentage.AdminCreateResponse{}, err
+	}
+
+	err = r.ValidateStruct(&request, "Percent")
+	if err != nil {
+		return service_percentage.AdminCreateResponse{}, err
+	}
+
+	response := service_percentage.AdminCreateResponse{
+		Percent:   request.Percent,
+		CreatedAt: time.Now(),
+		CreatedBy: claims.UserId,
+		BranchID:  claims.BranchID,
+	}
+
+	_, err = r.NewInsert().Model(&response).Returning("id").Exec(ctx, &response.ID)
+	if err != nil {
+		return service_percentage.AdminCreateResponse{}, web.NewRequestError(errors.Wrap(err, "creating service_percentage"), http.StatusBadRequest)
+	}
+
+	return response, nil
 }
 
 func NewRepository(DB *postgresql.Database) *Repository {

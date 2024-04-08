@@ -20,5 +20,3 @@ type Device struct {
 	UpdatedAt *time.Time `json:"updated_at" bun:"updated_at"`
 	DeletedAt *time.Time `json:"deleted_at" bun:"deleted_at"`
 }
-
-//for----> mobile dasturchilar uchun malumotlarni saqlashga

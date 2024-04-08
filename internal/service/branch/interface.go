@@ -17,6 +17,7 @@ type Repository interface {
 	AdminUpdateColumns(ctx context.Context, request AdminUpdateRequest) error
 	AdminDelete(ctx context.Context, id int64) error
 	AdminDeleteImage(ctx context.Context, request AdminDeleteImageRequest) error
+	AdminUpdateBranchAdmin(ctx context.Context, request AdminUpdateBranchAdmin) error
 
 	// @client
 

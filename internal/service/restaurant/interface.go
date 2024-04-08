@@ -6,7 +6,9 @@ import (
 )
 
 type Repository interface {
+
 	// @super-admin
+
 	SuperAdminGetList(ctx context.Context, filter Filter) ([]SuperAdminGetList, int, error)
 	SuperAdminGetDetail(ctx context.Context, id int64) (entity.Restaurant, error)
 	SuperAdminCreate(ctx context.Context, request SuperAdminCreateRequest) (SuperAdminCreateResponse, error)
@@ -14,4 +16,5 @@ type Repository interface {
 	SuperAdminUpdateColumns(ctx context.Context, request SuperAdminUpdateRequest) error
 	SuperAdminDelete(ctx context.Context, id int64) error
 	SiteGetList(ctx context.Context) ([]SiteGetListResponse, int, error)
+	SuperAdminUpdateRestaurantAdmin(ctx context.Context, request SuperAdminUpdateRestaurantAdmin) error
 }

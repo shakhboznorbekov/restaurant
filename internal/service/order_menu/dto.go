@@ -39,7 +39,6 @@ type ClientGetOftenList struct {
 	Name   *string         `json:"name"`
 	Photos *pq.StringArray `json:"photos"`
 	Price  *float32        `json:"price"`
-	Count  *int            `json:"count"`
 }
 
 type ClientCreateResponse struct {

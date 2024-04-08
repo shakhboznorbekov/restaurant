@@ -76,7 +76,8 @@ func (uc Controller) SuperAdminGetUserDetail(c *web.Context) error {
 func (uc Controller) SuperAdminCreateUser(c *web.Context) error {
 	var request user_service.SuperAdminCreateRequest
 
-	if err := c.BindFunc(&request, "Name", "Phone", "Gender", "BirthDate"); err != nil {
+	if err := c.BindFunc(&request,
+		"Name", "Phone", "Gender", "BirthDate", "Password"); err != nil {
 		return c.RespondError(err)
 	}
 
@@ -255,6 +256,7 @@ func (uc Controller) SendFeedback(c *web.Context) error {
 }
 
 // @admin
+
 // #waiter
 
 func (uc Controller) AdminGetWaiterList(c *web.Context) error {
@@ -504,6 +506,7 @@ func (uc Controller) AdminUpdateCashierPhone(c *web.Context) error {
 }
 
 // @branch
+
 // #waiter
 
 func (uc Controller) BranchGetListWaiterWorkTime(c *web.Context) error {
@@ -971,6 +974,7 @@ func (uc Controller) BranchUpdateCashierPhone(c *web.Context) error {
 }
 
 // @cashier
+
 // #cashier
 
 func (uc Controller) CashierGetMe(c *web.Context) error {

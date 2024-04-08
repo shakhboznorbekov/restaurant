@@ -1,6 +1,8 @@
 package service_percentage
 
-import "context"
+import (
+	"context"
+)
 
 type Service struct {
 	repo Repository

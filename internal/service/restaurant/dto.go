@@ -67,6 +67,11 @@ type SuperAdminUpdateRequest struct {
 	WebsiteUrl   *string                  `json:"website_url" form:"website_url"`
 }
 
+type SuperAdminUpdateRestaurantAdmin struct {
+	ID       int64   `json:"id" form:"id"`
+	Password *string `json:"password" form:"password"`
+}
+
 // @site
 
 type SiteGetListResponse struct {

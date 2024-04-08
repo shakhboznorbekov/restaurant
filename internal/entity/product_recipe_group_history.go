@@ -9,7 +9,8 @@ type ProductRecipeGroupHistory struct {
 	bun.BaseModel `bun:"table:product_recipe_group_histories"`
 
 	ID        int64      `json:"id" bun:"id,pk,autoincrement"`
-	Date      *time.Time `json:"date" bun:"date"`
+	From      *time.Time `json:"from" bun:"from"`
+	To        *time.Time `json:"to" bun:"to"`
 	ProductID *int64     `json:"product_id" bun:"product_id"`
 	GroupID   *int64     `json:"group_id" bun:"group_id"`
 	CreatedAt *time.Time `json:"created_at" bun:"created_at"`

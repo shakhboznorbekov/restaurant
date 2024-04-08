@@ -45,6 +45,16 @@ func (s Service) WaiterUpdateStatus(ctx context.Context, ids []int64, status str
 	return s.repo.WaiterUpdateStatus(ctx, ids, status)
 }
 
+// @cashier
+
+func (s Service) CashierUpdateStatus(ctx context.Context, id int64, status string) error {
+	return s.repo.CashierUpdateStatus(ctx, id, status)
+}
+
+func (s Service) CashierUpdateStatusByOrderID(ctx context.Context, orderId int64, status string) error {
+	return s.repo.CashierUpdateStatusByOrderID(ctx, orderId, status)
+}
+
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }

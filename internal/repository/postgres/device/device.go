@@ -3,10 +3,10 @@ package device
 import (
 	"context"
 	"github.com/pkg/errors"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/service/device"
 	"github.com/uptrace/bun"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/service/device"
 	"time"
 )
 
@@ -48,10 +48,10 @@ func (r Repository) Create(ctx context.Context, data device.Create) (entity.Devi
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return
 		}
-		tx.Commit()
+		_ = tx.Commit()
 	}()
 
 	//-------------------check-if-exists---------------------------------

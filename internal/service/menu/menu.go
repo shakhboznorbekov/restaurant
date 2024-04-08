@@ -37,6 +37,10 @@ func (s Service) AdminDelete(ctx context.Context, id int64) error {
 	return s.repo.AdminDelete(ctx, id)
 }
 
+func (s Service) AdminRemovePhoto(ctx context.Context, id int64, index *int) (*string, error) {
+	return s.repo.AdminRemovePhoto(ctx, id, index)
+}
+
 // @branch
 
 func (s Service) BranchGetList(ctx context.Context, filter Filter) ([]BranchGetList, int, error) {
@@ -66,8 +70,13 @@ func (s Service) BranchDelete(ctx context.Context, id int64) error {
 func (s Service) BranchUpdatePrinterID(ctx context.Context, request BranchUpdatePrinterIDRequest) error {
 	return s.repo.BranchUpdatePrinterID(ctx, request)
 }
+
 func (s Service) BranchDeletePrinterID(ctx context.Context, menuID int64) error {
 	return s.repo.BranchDeletePrinterID(ctx, menuID)
+}
+
+func (s Service) BranchRemovePhoto(ctx context.Context, id int64, index int) (*string, error) {
+	return s.repo.BranchRemovePhoto(ctx, id, index)
 }
 
 // @client
@@ -106,6 +115,10 @@ func (s Service) CashierUpdatePrinterID(ctx context.Context, request CashierUpda
 
 func (s Service) CashierDeletePrinterID(ctx context.Context, menuID int64) error {
 	return s.repo.CashierDeletePrinterID(ctx, menuID)
+}
+
+func (s Service) CashierRemovePhoto(ctx context.Context, id int64, index int) (*string, error) {
+	return s.repo.CashierRemovePhoto(ctx, id, index)
 }
 
 // @client

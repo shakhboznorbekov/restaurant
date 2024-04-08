@@ -14,6 +14,7 @@ type Table struct {
 	Capacity *int    `json:"capacity" bun:"capacity"`
 
 	BranchID  *int64     `json:"branch_id" bun:"branch_id"`
+	HallID    *int64     `json:"hall_id" bun:"hall_id"`
 	CreatedAt *time.Time `json:"created_at" bun:"created_at"`
 	CreatedBy *int64     `json:"created_by" bun:"created_by"`
 	UpdatedAt *time.Time `json:"updated_at" bun:"updated_at"`
@@ -21,5 +22,3 @@ type Table struct {
 	DeletedAt *time.Time `json:"deleted_at" bun:"deleted_at"`
 	DeletedBy *int64     `json:"deleted_by" bun:"deleted_by"`
 }
-
-//branchlardagi stollar uchun

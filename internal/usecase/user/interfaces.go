@@ -4,14 +4,12 @@ import (
 	"context"
 	"github.com/restaurant/internal/entity"
 	"github.com/restaurant/internal/service/attendance"
+	"github.com/restaurant/internal/service/cashier"
 	"github.com/restaurant/internal/service/service_percentage"
 	"github.com/restaurant/internal/service/sms"
+	"github.com/restaurant/internal/service/user"
 	"github.com/restaurant/internal/service/waiter"
 	wwt "github.com/restaurant/internal/service/waiter_work_time"
-
-	"github.com/restaurant/internal/service/user"
-	//"github.com/restaurant/internal/service/waiter"
-	//wwt "github.com/restaurant/internal/service/waiter_work_time"
 )
 
 type User interface {
@@ -74,6 +72,7 @@ type Waiter interface {
 	WaiterGetActivityStatistics(ctx context.Context) (*waiter.GetActivityStatistics, error)
 	WaiterGetWeeklyActivityStatistics(ctx context.Context, filter waiter.EarnedMoneyFilter) (*waiter.GetEarnedMoneyStatistics, error)
 	WaiterGetWeeklyAcceptedOrdersStatistics(ctx context.Context, filter waiter.EarnedMoneyFilter) (*waiter.GetAcceptedOrdersStatistics, error)
+	WaiterGetWeeklyRatingStatistics(ctx context.Context, filter waiter.Filter) ([]waiter.GetWeeklyRating, error)
 
 	// @cashier
 

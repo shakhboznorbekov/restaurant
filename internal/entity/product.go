@@ -8,8 +8,9 @@ import (
 type Product struct {
 	bun.BaseModel `bun:"table:products"`
 
-	ID   int64   `json:"id" bun:"id,pk,autoincrement"`
-	Name *string `json:"name" bun:"name"`
+	ID      int64   `json:"id" bun:"id,pk,autoincrement"`
+	Name    *string `json:"name" bun:"name"`
+	Barcode *string `json:"barcode" bun:"barcode"`
 
 	MeasureUnitID *int64     `json:"measure_unit_id" bun:"measure_unit_id"`
 	CreatedAt     *time.Time `json:"created_at" bun:"created_at"`
@@ -20,5 +21,3 @@ type Product struct {
 	DeletedBy     *int64     `json:"deleted_by" bun:"deleted_by"`
 	RestaurantID  *int64     `json:"restaurant_id" bun:"restaurant_id"`
 }
-
-//for ---->  mahsulotlar uchun

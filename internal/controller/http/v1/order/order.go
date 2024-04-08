@@ -199,6 +199,9 @@ func (uc Controller) CashierGetOrderList(c *web.Context) error {
 	if page, ok := c.GetQueryFunc(reflect.Int, "page").(*int); ok {
 		filter.Page = page
 	}
+	if search, ok := c.GetQueryFunc(reflect.String, "search").(*string); ok {
+		filter.Search = search
+	}
 
 	if err := c.ValidQuery(); err != nil {
 		return c.RespondMobileError(err)
@@ -743,7 +746,7 @@ func (uc Controller) WaiterAcceptOrder(c *web.Context) error {
 //	}, http.StatusOK)
 //}
 
-// order_menu
+// order_menu-----------------------------------------------------------------------------------------------
 
 // @waiter
 
@@ -773,15 +776,15 @@ func (uc Controller) WaiterUpdateOrderMenuStatus(c *web.Context) error {
 
 func (uc Controller) CashierUpdateOrderMenuStatus(c *web.Context) error {
 	request := struct {
-		Status string  `json:"status"`
-		Ids    []int64 `json:"ids"`
+		Status string `json:"status"`
+		Id     int64  `json:"id"`
 	}{}
 
-	if err := c.BindFunc(&request); err != nil {
+	if err := c.BindFunc(&request, "Id", "Status"); err != nil {
 		return c.RespondMobileError(err)
 	}
 
-	err := uc.useCase.CashierUpdateOrderMenuStatus(c.Ctx, request.Ids, request.Status)
+	err := uc.useCase.CashierUpdateOrderMenuStatus(c.Ctx, request.Id, request.Status)
 	if err != nil {
 		return c.RespondMobileError(err)
 	}
@@ -810,5 +813,22 @@ func (uc Controller) MobileClientGetOrderMenuOftenByBranchID(c *web.Context) err
 		"data":   response,
 		"status": true,
 		"error":  nil,
+	}, http.StatusOK)
+}
+
+// order_report----------------------------------------------------------------------------------------------
+
+// @cashier
+
+func (uc Controller) CashierReportOrder(c *web.Context) error {
+
+	err := uc.useCase.CashierOrderReport(c.Ctx)
+	if err != nil {
+		return c.RespondMobileError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"error":  nil,
+		"status": true,
 	}, http.StatusOK)
 }

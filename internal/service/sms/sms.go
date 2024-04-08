@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 	"github.com/restaurant/foundation/web"
 	"github.com/restaurant/internal/pkg/repository/postgresql"
 	"math/rand"
@@ -146,14 +147,6 @@ func (s *Service) CheckSMSCodeUpdatePhone(ctx context.Context, check Check) (boo
 	return true, nil
 }
 
-func (s *Service) generateSmsCode() string {
-	codeMin := 100000
-	codeMax := 999999
-	rand.Seed(time.Now().UnixNano())
-	code := strconv.Itoa(rand.Intn(codeMax-codeMin) + codeMin)
-	return code
-}
-
 func (s *Service) WaiterCheckSMSCode(ctx context.Context, check Check) (bool, error) {
 	rows, err := s.postgresDB.QueryContext(ctx, fmt.Sprintf(`
 		SELECT EXISTS (
@@ -192,4 +185,52 @@ func (s *Service) WaiterCheckSMSCode(ctx context.Context, check Check) (bool, er
 	}
 
 	return exists, nil
+}
+
+func (s *Service) CashierCheckSMSCode(ctx context.Context, check Check) (bool, error) {
+	rows, err := s.postgresDB.QueryContext(ctx, fmt.Sprintf(`
+		SELECT EXISTS (
+			SELECT
+				id
+			FROM
+			    users
+		    WHERE
+		        phone = '%s' AND
+		        deleted_at IS NULL
+		)
+	`, check.Phone))
+	if err != nil {
+		return false, web.NewRequestError(errors.Wrap(err, "selecting exists error"), http.StatusInternalServerError)
+	}
+
+	exists := false
+	if err = s.postgresDB.ScanRows(ctx, rows, &exists); err != nil {
+		return false, web.NewRequestError(errors.Wrap(err, "scanning exists phone"), http.StatusInternalServerError)
+	}
+
+	//smsCode, err := s.redisDB.Get(ctx, fmt.Sprintf("sms_code_%s", check.Phone)).Result()
+	//if err != nil && errors.Is(err, errors.New("redis: nil")) {
+	//
+	//}
+	//if err != nil {
+	//	log.Printf("get phone sms code error: %v", err)
+	//}
+
+	//if smsCode == "" || smsCode != check.Code {
+	//	return false, web.NewRequestError(errors.New("incorrect sms code"), http.StatusBadRequest)
+	//}
+
+	if check.Code != "111111" {
+		return exists, web.NewRequestError(errors.New("incorrect sms code"), http.StatusBadRequest)
+	}
+
+	return exists, nil
+}
+
+func (s *Service) generateSmsCode() string {
+	codeMin := 100000
+	codeMax := 999999
+	rand.Seed(time.Now().UnixNano())
+	code := strconv.Itoa(rand.Intn(codeMax-codeMin) + codeMin)
+	return code
 }

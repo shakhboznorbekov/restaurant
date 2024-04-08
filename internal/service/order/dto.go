@@ -42,7 +42,9 @@ type WaiterGetListResponse struct {
 	CreatedAt   *string      `json:"created_at"`
 	WaiterId    *int64       `json:"waiter_id"`
 	WaiterName  *string      `json:"waiter_name"`
+	WaiterPhoto *string      `json:"waiter_photo"`
 	Accepted    *bool        `json:"accepted"`
+	MyOrder     *bool        `json:"my_order"`
 	Menus       []WaiterMenu `json:"menus"`
 }
 
@@ -79,9 +81,11 @@ type WaiterGetDetailResponse struct {
 	Price       *float64     `json:"price" bun:"price"`
 	WaiterId    *int64       `json:"waiter_id"`
 	WaiterName  *string      `json:"waiter_name"`
+	WaiterPhoto *string      `json:"waiter_photo"`
 	TableNumber *int         `json:"table_number" bun:"table_number"`
 	CreatedDate *string      `json:"created_date"`
 	CreatedAt   *string      `json:"created_at"`
+	MyOrder     *bool        `json:"my_order"`
 	Menus       []WaiterMenu `json:"menus" bun:"menus"`
 }
 
@@ -99,6 +103,33 @@ type WaiterAcceptOrderResponse struct {
 	WaiterName  *string `json:"waiter_name" bun:"waiter_name"`
 	WaiterPhoto *string `json:"waiter_photo" bun:"waiter_photo"`
 	AcceptedAt  *string `json:"accepted_at" bun:"accepted_at"`
+}
+
+type HistoryActivityListResponse struct {
+	Id          int64   `json:"id" bun:"id"`
+	OrderNumber *int64  `json:"order_number" bun:"order_number"`
+	Status      *string `json:"status" bun:"status"`
+	CreatedAt   *string `json:"created_at" bun:"created_at"`
+}
+
+type WaiterGetOrderDetailResponse struct {
+	Id          int64             `json:"id"`
+	Number      *int              `json:"number"`
+	TableNumber *int              `json:"table_number"`
+	Status      *string           `json:"status"`
+	ClientCount *int              `json:"client_count"`
+	Price       *float64          `json:"total_price"`
+	CreatedAt   *string           `json:"created_at"`
+	Menus       []WaiterOrderMenu `json:"menus"`
+}
+
+type WaiterOrderMenu struct {
+	Id              int64   `json:"id"`
+	OrderMenuId     int64   `json:"order_menu_id"`
+	OrderMenuStatus string  `json:"order_menu_status"`
+	Name            *string `json:"name"`
+	Price           float64 `json:"price"`
+	Count           int     `json:"count"`
 }
 
 // @client
@@ -135,15 +166,18 @@ type MobileGetList struct {
 
 type MobileGetDetail struct {
 	ID                int64      `json:"id"`
-	Foods             []FoodList `json:"foods"`
 	CreatedAt         *string    `json:"created_at"`
 	BranchName        *string    `json:"branch_name"`
+	BranchId          *int64     `json:"branch_id"`
 	Sum               *float32   `json:"sum"`
 	Service           *float32   `json:"service"`
 	OverAll           *float32   `json:"over_all"`
 	ServicePercentage *int       `json:"service_percentage"`
 	TableNumber       *int       `json:"table_number"`
 	OrderNumber       *int       `json:"order_number"`
+	WaiterId          *int64     `json:"waiter_id"`
+	WaiterName        *string    `json:"waiter_name"`
+	WaiterPhoto       *string    `json:"waiter_photo"`
 	Menus             []MenuList `json:"menus"`
 }
 
@@ -222,6 +256,9 @@ type CashierGetList struct {
 	TableNumber *int     `json:"table_number"`
 	CreatedAt   *string  `json:"created_at"`
 	Price       *float32 `json:"price"`
+	WaiterId    *int64   `json:"waiter_id"`
+	WaiterName  *string  `json:"waiter_name"`
+	WaiterPhoto *string  `json:"waiter_photo"`
 }
 
 type CashierGetDetail struct {
@@ -254,12 +291,13 @@ type FoodList struct {
 }
 
 type MenuList struct {
-	ID     int64          `json:"id"`
-	Name   *string        `json:"name"`
-	Price  *float32       `json:"price"`
-	Count  int            `json:"count"`
-	Status *string        `json:"status"`
-	Photos pq.StringArray `json:"photos"`
+	ID          int64          `json:"id"`
+	OrderMenuID int64          `json:"order_menu_id"`
+	Status      *string        `json:"status"`
+	Name        *string        `json:"name"`
+	Price       *float32       `json:"price"`
+	Count       int            `json:"count"`
+	Photos      pq.StringArray `json:"photos"`
 }
 
 type Order struct {

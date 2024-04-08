@@ -96,6 +96,11 @@ type AdminDeleteImageRequest struct {
 	ImageIndex *int  `json:"image_index" form:"image_index"`
 }
 
+type AdminUpdateBranchAdmin struct {
+	ID       int64   `json:"id" form:"id"`
+	Password *string `json:"password" form:"password"`
+}
+
 // @client
 
 type ClientGetList struct {

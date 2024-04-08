@@ -5,6 +5,7 @@ import (
 	"github.com/restaurant/internal/entity"
 	"github.com/restaurant/internal/service/branch"
 	"github.com/restaurant/internal/service/branchReview"
+	halls "github.com/restaurant/internal/service/hall"
 	"github.com/restaurant/internal/service/printers"
 	"github.com/restaurant/internal/service/restaurant"
 	"github.com/restaurant/internal/service/restaurant_category"
@@ -21,6 +22,7 @@ type Restaurant interface {
 	SuperAdminUpdateColumns(ctx context.Context, request restaurant.SuperAdminUpdateRequest) error
 	SuperAdminDelete(ctx context.Context, id int64) error
 	SiteGetList(ctx context.Context) ([]restaurant.SiteGetListResponse, int, error)
+	SuperAdminUpdateRestaurantAdmin(ctx context.Context, request restaurant.SuperAdminUpdateRestaurantAdmin) error
 }
 
 type User interface {
@@ -62,6 +64,7 @@ type Branch interface {
 	AdminUpdateColumns(ctx context.Context, request branch.AdminUpdateRequest) error
 	AdminDelete(ctx context.Context, id int64) error
 	AdminDeleteImage(ctx context.Context, request branch.AdminDeleteImageRequest) error
+	AdminUpdateBranchAdmin(ctx context.Context, request branch.AdminUpdateBranchAdmin) error
 
 	// @client
 
@@ -168,4 +171,38 @@ type Printers interface {
 type ServicePercentage interface {
 	BranchCreate(ctx context.Context, request service_percentage.AdminCreateRequest) (service_percentage.AdminCreateResponse, error)
 	AdminUpdateBranchID(ctx context.Context, request service_percentage.AdminUpdateBranchRequest) error
+}
+
+type Hall interface {
+
+	// @admin
+
+	AdminGetList(ctx context.Context, filter halls.Filter) ([]halls.AdminGetList, int, error)
+	AdminGetDetail(ctx context.Context, id int64) (entity.Hall, error)
+	AdminCreate(ctx context.Context, request halls.AdminCreateRequest) (halls.AdminCreateResponse, error)
+	AdminUpdateAll(ctx context.Context, request halls.AdminUpdateRequest) error
+	AdminUpdateColumns(ctx context.Context, request halls.AdminUpdateRequest) error
+	AdminDelete(ctx context.Context, id int64) error
+
+	// @branch
+
+	BranchGetList(ctx context.Context, filter halls.Filter) ([]halls.BranchGetList, int, error)
+	BranchGetDetail(ctx context.Context, id int64) (entity.Hall, error)
+	BranchCreate(ctx context.Context, request halls.BranchCreateRequest) (halls.BranchCreateResponse, error)
+	BranchUpdateAll(ctx context.Context, request halls.BranchUpdateRequest) error
+	BranchUpdateColumns(ctx context.Context, request halls.BranchUpdateRequest) error
+	BranchDelete(ctx context.Context, id int64) error
+
+	// @cashier
+
+	CashierGetList(ctx context.Context, filter halls.Filter) ([]halls.CashierGetList, int, error)
+	CashierGetDetail(ctx context.Context, id int64) (entity.Hall, error)
+	CashierCreate(ctx context.Context, request halls.CashierCreateRequest) (halls.CashierCreateResponse, error)
+	CashierUpdateAll(ctx context.Context, request halls.CashierUpdateRequest) error
+	CashierUpdateColumns(ctx context.Context, request halls.CashierUpdateRequest) error
+	CashierDelete(ctx context.Context, id int64) error
+
+	// @waiter
+
+	WaiterGetList(ctx context.Context, filter halls.Filter) ([]halls.WaiterGetList, int, error)
 }

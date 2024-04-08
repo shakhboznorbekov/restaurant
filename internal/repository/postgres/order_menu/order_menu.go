@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/hashing"
-	"github.com/restaurant/internal/service/order_menu"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/hashing"
+	"restu-backend/internal/service/order_menu"
+	"strings"
 	"time"
 )
 
@@ -48,11 +49,10 @@ func (r Repository) ClientGetList(ctx context.Context, filter order_menu.Filter)
 			of.count,
 			of.menu_id,
 			of.order_id,
-			f.name
+			m.name
 		FROM
 		    order_menu as of
 		LEFT OUTER JOIN menus m on m.id = of.menu_id
-		LEFT OUTER JOIN foods f on f.id = m.food_id
 		LEFT OUTER JOIN orders o on o.id = of.order_id
 		%s
 	`, whereQuery)
@@ -141,17 +141,17 @@ func (r Repository) ClientUpdateAll(ctx context.Context, request order_menu.Clie
 		return err
 	}
 
-	q := r.NewUpdate().Table("order_food").Where("deleted_at IS NULL AND id = ?", request.ID)
+	q := r.NewUpdate().Table("order_menu").Where("deleted_at IS NULL AND id = ?", request.ID)
 
 	q.Set("count = ?", request.Count)
-	q.Set("food_id = ?", request.MenuID)
+	q.Set("menu_id = ?", request.MenuID)
 	q.Set("order_id = ?", request.OrderID)
 	q.Set("updated_at = ?", time.Now())
 	q.Set("updated_by = ?", claims.UserId)
 
 	_, err = q.Exec(ctx)
 	if err != nil {
-		return web.NewRequestError(errors.Wrap(err, "updating order_food"), http.StatusBadRequest)
+		return web.NewRequestError(errors.Wrap(err, "updating order_menu"), http.StatusBadRequest)
 	}
 
 	return nil
@@ -167,13 +167,13 @@ func (r Repository) ClientUpdateColumns(ctx context.Context, request order_menu.
 		return err
 	}
 
-	q := r.NewUpdate().Table("order_food").Where("deleted_at IS NULL AND id = ?", request.ID)
+	q := r.NewUpdate().Table("order_menu").Where("deleted_at IS NULL AND id = ?", request.ID)
 
 	if request.Count != nil {
 		q.Set("count = ?", request.Count)
 	}
 	if request.MenuID != nil {
-		q.Set("food_id = ?", request.MenuID)
+		q.Set("menu_id = ?", request.MenuID)
 	}
 	if request.OrderID != nil {
 		q.Set("order_id = ?", request.OrderID)
@@ -210,13 +210,11 @@ func (r Repository) ClientGetOftenList(ctx context.Context, branchID int) ([]ord
 			GROUP BY orm.menu_id
 			ORDER BY count(orm.menu_id) desc )
 		SELECT
-			f.id AS id,
-			f.name AS name,
-			f.photos AS photos,
-			m.new_price AS price,
-			often_menus.count
+			m.id AS id,
+			m.name AS name,
+			m.photos AS photos,
+			m.new_price AS price
 		FROM menus AS m
-				 LEFT JOIN foods AS f ON m.food_id = f.id
 				 LEFT JOIN often_menus ON m.id = often_menus.foo
 		WHERE often_menus.foo IS NOT NULL;
 	`, branchID)
@@ -293,6 +291,61 @@ func (r Repository) WaiterUpdateStatus(ctx context.Context, ids []int64, status 
 		if err != nil {
 			return web.NewRequestError(errors.Wrap(err, "updating order"), http.StatusBadRequest)
 		}
+	}
+
+	return nil
+}
+
+// @cashier
+
+func (r Repository) CashierUpdateStatus(ctx context.Context, id int64, status string) error {
+	_, err := r.CheckClaims(ctx, auth.RoleCashier)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "extracting claims"), http.StatusInternalServerError)
+	}
+
+	if strings.ToUpper(status) == "CANCELLED" || strings.ToUpper(status) == "SERVED" {
+		// updating orders...
+		q := r.NewUpdate().Table("order_menu").Where(fmt.Sprintf("deleted_at isnull and status!='PAID' and status!='CANCELLED' and id = %d", id))
+
+		q.Set("status = ?", strings.ToUpper(status))
+
+		_, err = q.Exec(ctx)
+		if err != nil {
+			return web.NewRequestError(errors.Wrap(err, "updating order"), http.StatusBadRequest)
+		}
+		//} else if strings.ToUpper(status) == "DELETE" {
+		//	// updating orders...
+		//	q := r.NewUpdate().Table("order_menu").Where(fmt.Sprintf("deleted_at isnull and status!='PAID' and id = %d", id))
+		//
+		//	q.Set("deleted_at = ?", time.Now())
+		//	q.Set("deleted_by = ?", claims.UserId)
+		//
+		//	_, err = q.Exec(ctx)
+		//	if err != nil {
+		//		return web.NewRequestError(errors.Wrap(err, "updating order"), http.StatusBadRequest)
+		//	}
+	} else {
+		return web.NewRequestError(errors.New("invalid status"), http.StatusBadRequest)
+	}
+
+	return nil
+}
+
+func (r Repository) CashierUpdateStatusByOrderID(ctx context.Context, orderId int64, status string) error {
+	claims, err := r.CheckClaims(ctx, auth.RoleCashier)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "extracting claims"), http.StatusInternalServerError)
+	}
+
+	// updating orders...
+	q := r.NewUpdate().Table("order_menu").Where(fmt.Sprintf("deleted_at isnull and status!='PAID' and status!='CANCELLED' and order_id = %d AND (SELECT t.branch_id FROM tables as t Where t.id = (SELECT o.table_id FROM orders as o Where o.id = order_menu.order_id)) = %d", orderId, *claims.BranchID))
+
+	q.Set("status = ?", strings.ToUpper(status))
+
+	_, err = q.Exec(ctx)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "updating order"), http.StatusBadRequest)
 	}
 
 	return nil

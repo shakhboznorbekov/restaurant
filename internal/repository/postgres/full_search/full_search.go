@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/service/full_search"
-	"github.com/restaurant/internal/service/hashing"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/service/full_search"
+	"restu-backend/internal/service/hashing"
 	"strings"
 	"time"
 )
@@ -25,8 +25,11 @@ func (r Repository) ClientGetList(ctx context.Context, filter full_search.Filter
 	//if err != nil {
 	//	return nil, err
 	//}
+
 	whereQuery := fmt.Sprintf(`WHERE b.deleted_at IS NULL`)
+
 	search := *filter.Search
+
 	location := true
 	food := true
 	if filter.Lat == nil || filter.Lon == nil {
@@ -36,23 +39,41 @@ func (r Repository) ClientGetList(ctx context.Context, filter full_search.Filter
 		location = false
 	}
 
-	if filter.Menu == nil {
-		whereQuery += fmt.Sprintf(` AND 
+	queryOrder := ""
+	if location {
+		queryOrder += " ORDER BY distance"
+	} else {
+		queryOrder += " ORDER BY b.rate"
+	}
+
+	if len(search) > 2 {
+		if filter.Menu == nil {
+			whereQuery += fmt.Sprintf(` AND 
 			(
 				b.menu_names ilike '%s' OR
 				b.name ilike '%s' OR
 				b.name ilike '%s'
 				
 			)`,
-			"% "+search+"%",
-			"% "+search+"%",
-			""+search+"%",
-		)
-	} else if strings.ToUpper(*filter.Menu) == "RESTAURANT" {
-		whereQuery += fmt.Sprintf(` AND (b.name ilike '%s' OR b.name ilike '%s')`, "% "+search+"%", ""+search+"%")
+				"% "+search+"%",
+				"% "+search+"%",
+				""+search+"%",
+			)
+		} else if strings.ToUpper(*filter.Menu) == "RESTAURANT" {
+			whereQuery += fmt.Sprintf(` AND (b.name ilike '%s' OR b.name ilike '%s')`, "% "+search+"%", ""+search+"%")
+			food = false
+		} else if strings.ToUpper(*filter.Menu) == "FOOD" {
+			whereQuery += fmt.Sprintf(` AND b.menu_names ilike '%s'`, "% "+search+"%")
+		}
+	} else {
+		queryOrder = " ORDER BY b.search_count desc"
 		food = false
-	} else if strings.ToUpper(*filter.Menu) == "FOOD" {
-		whereQuery += fmt.Sprintf(` AND b.menu_names ilike '%s'`, "% "+search+"%")
+		limit := 10
+		if filter.Limit == nil {
+			filter.Limit = &limit
+		} else if *filter.Limit > 10 {
+			filter.Limit = &limit
+		}
 	}
 
 	todayInt := time.Now().Weekday()
@@ -74,11 +95,16 @@ func (r Repository) ClientGetList(ctx context.Context, filter full_search.Filter
 		today = "Sunday"
 	}
 
-	queryOrder := ""
-	if location {
-		queryOrder += " ORDER BY distance"
-	} else {
-		queryOrder += " ORDER BY b.rate"
+	var limitQuery, offsetQuery string
+	if filter.Page != nil && filter.Limit != nil {
+		offset := (*filter.Page - 1) * (*filter.Limit)
+		filter.Offset = &offset
+	}
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
 	}
 
 	query := fmt.Sprintf(`
@@ -101,8 +127,8 @@ func (r Repository) ClientGetList(ctx context.Context, filter full_search.Filter
 				    branches AS b
 				LEFT OUTER JOIN restaurant_category AS rc ON rc.id = b.category_id
 				%s
-				%s
-	`, today, "% "+search+"%", location, *filter.Lon, *filter.Lat, whereQuery, queryOrder)
+				%s %s %s
+	`, today, "% "+search+"%", location, *filter.Lon, *filter.Lat, whereQuery, queryOrder, limitQuery, offsetQuery)
 
 	list := make([]full_search.ClientGetList, 0)
 
@@ -131,12 +157,11 @@ func (r Repository) ClientGetList(ctx context.Context, filter full_search.Filter
 			queryMenu := fmt.Sprintf(`
 										SELECT 
 										    m.id,
-										    f.name,
-										    f.photos,
+										    m.name,
+										    m.photos,
 										    m.new_price as price
 										FROM 
 										    menus AS m
-										LEFT JOIN foods AS f ON m.food_id = f.id
 										WHERE 
 										    m.branch_id = %d AND m.deleted_at IS NULL AND m.deleted_at IS NULL `, v.ID)
 			menus := make([]full_search.Menu, 0)

@@ -3,13 +3,16 @@ package restaurant
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/restaurant/foundation/web"
 	"github.com/restaurant/internal/pkg/config"
 	"github.com/restaurant/internal/pkg/file"
 	"github.com/restaurant/internal/pkg/utils"
 	"github.com/restaurant/internal/service/branch"
 	"github.com/restaurant/internal/service/branchReview"
+	halls "github.com/restaurant/internal/service/hall"
 	"github.com/restaurant/internal/service/printers"
 	"github.com/restaurant/internal/service/restaurant"
 	"github.com/restaurant/internal/service/restaurant_category"
@@ -17,6 +20,8 @@ import (
 	"github.com/restaurant/internal/service/tables"
 	"github.com/restaurant/internal/service/user"
 	"github.com/restaurant/internal/utils/location"
+	"github.com/restaurant/internal/utils/request"
+	"golang.org/x/crypto/bcrypt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -32,10 +37,11 @@ type UseCase struct {
 	branchReview       BranchReview
 	printers           Printers
 	servicePercentage  ServicePercentage
+	hall               Hall
 }
 
-func NewUseCase(restaurant Restaurant, user User, restaurantCategory RestaurantCategory, branch Branch, table Table, branchReview BranchReview, printers Printers, servicePercentage ServicePercentage) *UseCase {
-	return &UseCase{restaurant, user, restaurantCategory, branch, table, branchReview, printers, servicePercentage}
+func NewUseCase(restaurant Restaurant, user User, restaurantCategory RestaurantCategory, branch Branch, table Table, branchReview BranchReview, printers Printers, servicePercentage ServicePercentage, halls Hall) *UseCase {
+	return &UseCase{restaurant, user, restaurantCategory, branch, table, branchReview, printers, servicePercentage, halls}
 }
 
 // #resaturant
@@ -101,6 +107,10 @@ func (uu UseCase) SuperAdminCreateRestaurant(ctx context.Context, data restauran
 	if data.User.Phone == nil {
 		return restaurant.SuperAdminCreateResponse{}, errors.New("user.phone required")
 	}
+	if data.User.Password == nil {
+		return restaurant.SuperAdminCreateResponse{}, errors.New("user.password required")
+	}
+
 	exists, err := uu.user.IsPhoneExists(ctx, *data.User.Phone)
 	if err != nil {
 		return restaurant.SuperAdminCreateResponse{}, err
@@ -123,8 +133,17 @@ func (uu UseCase) SuperAdminCreateRestaurant(ctx context.Context, data restauran
 		return restaurant.SuperAdminCreateResponse{}, err
 	}
 
+	hash, err := bcrypt.GenerateFromPassword([]byte(*data.User.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return restaurant.SuperAdminCreateResponse{},
+			web.NewRequestError(errors.Wrap(err, "hashing password"), http.StatusInternalServerError)
+	}
+	hashedPassword := string(hash)
+
+	data.User.Password = &hashedPassword
 	data.User.RestaurantID = &detail.ID
 	data.User.CreatedBy = detail.CreatedBy
+
 	_, err = uu.user.AdminCreate(ctx, data.User)
 	if err != nil {
 		return restaurant.SuperAdminCreateResponse{}, err
@@ -179,6 +198,18 @@ func (uu UseCase) SuperAdminUpdateRestaurantColumn(ctx context.Context, data res
 
 func (uu UseCase) SuperAdminDeleteRestaurant(ctx context.Context, id int64) error {
 	return uu.restaurant.SuperAdminDelete(ctx, id)
+}
+
+func (uu UseCase) SuperAdminUpdateRestaurantAdmin(ctx context.Context, data restaurant.SuperAdminUpdateRestaurantAdmin) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(*data.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "hashing password"), http.StatusInternalServerError)
+	}
+	hashedPassword := string(hash)
+
+	data.Password = &hashedPassword
+
+	return uu.restaurant.SuperAdminUpdateRestaurantAdmin(ctx, data)
 }
 
 // @site #restaurant
@@ -311,6 +342,10 @@ func (uu UseCase) AdminCreateBranch(ctx context.Context, data branch.AdminCreate
 	if data.User.Phone == nil {
 		return branch.AdminCreateResponse{}, errors.New("user.phone required")
 	}
+	if data.User.Password == nil {
+		return branch.AdminCreateResponse{}, errors.New("user.password required")
+	}
+
 	exists, err := uu.user.IsPhoneExists(ctx, *data.User.Phone)
 	if err != nil {
 		return branch.AdminCreateResponse{}, err
@@ -360,6 +395,13 @@ func (uu UseCase) AdminCreateBranch(ctx context.Context, data branch.AdminCreate
 		return branch.AdminCreateResponse{}, err
 	}
 
+	hash, err := bcrypt.GenerateFromPassword([]byte(*data.User.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return branch.AdminCreateResponse{}, web.NewRequestError(errors.Wrap(err, "hashing password"), http.StatusInternalServerError)
+	}
+	hashedPassword := string(hash)
+	data.User.Password = &hashedPassword
+
 	data.User.BranchID = &detail.ID
 	data.User.CreatedBy = detail.CreatedBy
 	_, err = uu.user.BranchCreate(ctx, data.User)
@@ -399,6 +441,18 @@ func (uu UseCase) AdminDeleteBranch(ctx context.Context, id int64) error {
 
 func (uu UseCase) AdminDeleteImage(ctx context.Context, request branch.AdminDeleteImageRequest) error {
 	return uu.branch.AdminDeleteImage(ctx, request)
+}
+
+func (uu UseCase) AdminUpdateBranchAdmin(ctx context.Context, data branch.AdminUpdateBranchAdmin) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(*data.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return web.NewRequestError(errors.Wrap(err, "hashing password"), http.StatusInternalServerError)
+	}
+	hashedPassword := string(hash)
+
+	data.Password = &hashedPassword
+
+	return uu.branch.AdminUpdateBranchAdmin(ctx, data)
 }
 
 // -@client
@@ -507,13 +561,17 @@ func (uu UseCase) WsBranchUpdateTokenExpiredAt(ctx context.Context, id int64) (s
 func (uu UseCase) AdminGetTableList(ctx context.Context, filter tables.Filter) ([]tables.AdminGetList, int, error) {
 	m := make(map[string][]string)
 
-	m["tables"] = []string{"id", "number", "status", "capacity", "branch_id"}
+	m["tables"] = []string{"id", "number", "status", "capacity", "branch_id", "hall_id"}
+	m["halls"] = []string{"name"}
 	filter.Fields = m
 
 	joinColumn := "id"
 	mainColumn := "branch_id"
+	joinHallColumn := "id"
+	mainHallColumn := "hall_id"
 	joins := make(map[string]utils.Joins)
 	joins["branches"] = utils.Joins{JoinColumn: &joinColumn, MainColumn: &mainColumn}
+	joins["halls"] = utils.Joins{JoinColumn: &joinHallColumn, MainColumn: &mainHallColumn}
 	filter.Joins = joins
 
 	list, count, err := uu.table.AdminGetList(ctx, filter)
@@ -537,6 +595,7 @@ func (uu UseCase) AdminGetTableDetail(ctx context.Context, id int64) (tables.Adm
 	detail.Status = data.Status
 	detail.Capacity = data.Capacity
 	detail.BranchID = data.BranchID
+	detail.HallID = data.HallID
 
 	return detail, nil
 }
@@ -582,13 +641,18 @@ func (uu UseCase) WaiterGetTableList(ctx context.Context, filter tables.Filter) 
 
 func (uu UseCase) BranchGetTableList(ctx context.Context, filter tables.Filter) ([]tables.BranchGetList, int, error) {
 	m := make(map[string][]string)
-	m["tables"] = []string{"id", "number", "status", "capacity", "branch_id"}
+	m["tables"] = []string{"id", "number", "status", "capacity", "branch_id", "hall_id"}
+	m["halls"] = []string{"name"}
 	filter.Fields = m
 
 	joinColumn := "id"
 	mainColumn := "branch_id"
+	joinHallColumn := "id"
+	mainHallColumn := "hall_id"
 	joins := make(map[string]utils.Joins)
 	joins["branches"] = utils.Joins{JoinColumn: &joinColumn, MainColumn: &mainColumn}
+	joins["halls"] = utils.Joins{JoinColumn: &joinHallColumn, MainColumn: &mainHallColumn}
+
 	filter.Joins = joins
 
 	list, count, err := uu.table.BranchGetList(ctx, filter)
@@ -612,6 +676,7 @@ func (uu UseCase) BranchGetTableDetail(ctx context.Context, id int64) (tables.Br
 	detail.Status = data.Status
 	detail.Capacity = data.Capacity
 	detail.BranchID = data.BranchID
+	detail.HallID = data.HallID
 
 	return detail, nil
 }
@@ -709,13 +774,18 @@ func (uu UseCase) BranchGenerateQRTable(ctx context.Context, data tables.BranchG
 
 func (uu UseCase) CashierGetTableList(ctx context.Context, filter tables.Filter) ([]tables.CashierGetList, int, error) {
 	m := make(map[string][]string)
-	m["tables"] = []string{"id", "number", "status", "capacity", "branch_id"}
+	m["tables"] = []string{"id", "number", "status", "capacity", "branch_id", "hall_id"}
+	m["halls"] = []string{"name"}
 	filter.Fields = m
 
 	joinColumn := "id"
 	mainColumn := "branch_id"
+	joinHallColumn := "id"
+	mainHallColumn := "hall_id"
 	joins := make(map[string]utils.Joins)
 	joins["branches"] = utils.Joins{JoinColumn: &joinColumn, MainColumn: &mainColumn}
+	joins["halls"] = utils.Joins{JoinColumn: &joinHallColumn, MainColumn: &mainHallColumn}
+
 	filter.Joins = joins
 
 	list, count, err := uu.table.CashierGetList(ctx, filter)
@@ -739,6 +809,7 @@ func (uu UseCase) CashierGetTableDetail(ctx context.Context, id int64) (tables.C
 	detail.Status = data.Status
 	detail.Capacity = data.Capacity
 	detail.BranchID = data.BranchID
+	detail.HallID = data.HallID
 
 	return detail, nil
 }
@@ -974,4 +1045,144 @@ func sendRequestQRService(body request.QRBody) (QRResponse, error) {
 	}
 
 	return response, nil
+}
+
+// #halls
+
+// @admin
+
+func (uu UseCase) AdminGetHallList(ctx context.Context, filter halls.Filter) ([]halls.AdminGetList, int, error) {
+	list, count, err := uu.hall.AdminGetList(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return list, count, err
+}
+
+func (uu UseCase) AdminGetHallDetail(ctx context.Context, id int64) (halls.AdminGetDetail, error) {
+	var detail halls.AdminGetDetail
+
+	data, err := uu.hall.AdminGetDetail(ctx, id)
+	if err != nil {
+		return halls.AdminGetDetail{}, err
+	}
+
+	detail.ID = data.ID
+	detail.Name = data.Name
+	detail.BranchID = data.BranchID
+
+	return detail, nil
+}
+
+func (uu UseCase) AdminCreateHall(ctx context.Context, data halls.AdminCreateRequest) (halls.AdminCreateResponse, error) {
+	return uu.hall.AdminCreate(ctx, data)
+}
+
+func (uu UseCase) AdminUpdateHall(ctx context.Context, data halls.AdminUpdateRequest) error {
+	return uu.hall.AdminUpdateAll(ctx, data)
+}
+
+func (uu UseCase) AdminUpdateHallColumn(ctx context.Context, data halls.AdminUpdateRequest) error {
+	return uu.hall.AdminUpdateColumns(ctx, data)
+}
+
+func (uu UseCase) AdminDeleteHall(ctx context.Context, id int64) error {
+	return uu.hall.AdminDelete(ctx, id)
+}
+
+// @branch
+
+func (uu UseCase) BranchGetHallList(ctx context.Context, filter halls.Filter) ([]halls.BranchGetList, int, error) {
+
+	list, count, err := uu.hall.BranchGetList(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return list, count, err
+}
+
+func (uu UseCase) BranchGetHallDetail(ctx context.Context, id int64) (halls.BranchGetDetail, error) {
+	var detail halls.BranchGetDetail
+
+	data, err := uu.hall.BranchGetDetail(ctx, id)
+	if err != nil {
+		return halls.BranchGetDetail{}, err
+	}
+
+	detail.ID = data.ID
+	detail.Name = data.Name
+
+	return detail, nil
+}
+
+func (uu UseCase) BranchCreateHall(ctx context.Context, data halls.BranchCreateRequest) (halls.BranchCreateResponse, error) {
+	return uu.hall.BranchCreate(ctx, data)
+}
+
+func (uu UseCase) BranchUpdateHall(ctx context.Context, data halls.BranchUpdateRequest) error {
+	return uu.hall.BranchUpdateAll(ctx, data)
+}
+
+func (uu UseCase) BranchUpdateHallColumn(ctx context.Context, data halls.BranchUpdateRequest) error {
+	return uu.hall.BranchUpdateColumns(ctx, data)
+}
+
+func (uu UseCase) BranchDeleteHall(ctx context.Context, id int64) error {
+	return uu.hall.BranchDelete(ctx, id)
+}
+
+// @cashier
+
+func (uu UseCase) CashierGetHallList(ctx context.Context, filter halls.Filter) ([]halls.CashierGetList, int, error) {
+
+	list, count, err := uu.hall.CashierGetList(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return list, count, err
+}
+
+func (uu UseCase) CashierGetHallDetail(ctx context.Context, id int64) (halls.CashierGetDetail, error) {
+	var detail halls.CashierGetDetail
+
+	data, err := uu.hall.CashierGetDetail(ctx, id)
+	if err != nil {
+		return halls.CashierGetDetail{}, err
+	}
+
+	detail.ID = data.ID
+	detail.Name = data.Name
+
+	return detail, nil
+}
+
+func (uu UseCase) CashierCreateHall(ctx context.Context, data halls.CashierCreateRequest) (halls.CashierCreateResponse, error) {
+	return uu.hall.CashierCreate(ctx, data)
+}
+
+func (uu UseCase) CashierUpdateHall(ctx context.Context, data halls.CashierUpdateRequest) error {
+	return uu.hall.CashierUpdateAll(ctx, data)
+}
+
+func (uu UseCase) CashierUpdateHallColumn(ctx context.Context, data halls.CashierUpdateRequest) error {
+	return uu.hall.CashierUpdateColumns(ctx, data)
+}
+
+func (uu UseCase) CashierDeleteHall(ctx context.Context, id int64) error {
+	return uu.hall.CashierDelete(ctx, id)
+}
+
+// @waiter
+
+func (uu UseCase) WaiterGetHallList(ctx context.Context, filter halls.Filter) ([]halls.WaiterGetList, int, error) {
+
+	list, count, err := uu.hall.WaiterGetList(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return list, count, err
 }

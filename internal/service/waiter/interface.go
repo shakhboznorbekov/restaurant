@@ -34,6 +34,7 @@ type Repository interface {
 	WaiterGetActivityStatistics(ctx context.Context) (*GetActivityStatistics, error)
 	WaiterGetWeeklyActivityStatistics(ctx context.Context, filter EarnedMoneyFilter) (*GetEarnedMoneyStatistics, error)
 	WaiterGetWeeklyAcceptedOrdersStatistics(ctx context.Context, filter EarnedMoneyFilter) (*GetAcceptedOrdersStatistics, error)
+	WaiterGetWeeklyRatingStatistics(ctx context.Context, filter Filter) ([]GetWeeklyRating, error)
 
 	// @cashier
 

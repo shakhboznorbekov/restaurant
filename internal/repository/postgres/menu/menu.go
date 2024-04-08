@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/hashing"
-	"github.com/restaurant/internal/service/menu"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/hashing"
+	"restu-backend/internal/service/menu"
 	"strings"
 	"time"
 )
@@ -30,7 +30,12 @@ func (r Repository) AdminGetList(ctx context.Context, filter menu.Filter) ([]men
 		return nil, 0, err
 	}
 
-	whereQuery := fmt.Sprintf(`WHERE fc.deleted_at IS NULL AND m.deleted_at IS NULL AND m.branch_id in (select id from branches where restaurant_id = %d)`, *claims.RestaurantID)
+	whereQuery := fmt.Sprintf(`WHERE mc.deleted_at IS NULL AND m.deleted_at IS NULL AND m.branch_id in (select id from branches where restaurant_id = %d) AND mc.restaurant_id = %d`, *claims.RestaurantID, *claims.RestaurantID)
+
+	if filter.BranchID != nil {
+		whereQuery += fmt.Sprintf(` AND m.branch_id = %d`, *filter.BranchID)
+	}
+
 	countWhereQuery := whereQuery
 
 	var limitQuery, offsetQuery string
@@ -60,15 +65,14 @@ func (r Repository) AdminGetList(ctx context.Context, filter menu.Filter) ([]men
 	//`, whereQuery)
 
 	query := fmt.Sprintf(`SELECT 
-					fc.id AS category_id, 
-					fc.name AS category_name, 
-					json_agg(json_build_object('id', m.id, 'name', f.name, 'photos', f.photos, 'price', m.new_price, 'status', m.status)) AS menus
+					mc.id AS category_id, 
+					mc.name AS category_name, 
+					json_agg(json_build_object('id', m.id, 'name', m.name, 'photos', m.photos, 'price', m.new_price, 'status', m.status)) AS menus
 				FROM 
-					food_category fc
-				JOIN foods f ON f.category_id = fc.id
-				JOIN menus m ON m.food_id = f.id
+					menu_categories mc
+				JOIN menus m ON m.menu_category_id = mc.id
 				%s 
-				GROUP BY fc.id, fc.name ORDER BY fc.name %s %s;`, whereQuery, limitQuery, offsetQuery)
+				GROUP BY mc.id, mc.name ORDER BY mc.name %s %s`, whereQuery, limitQuery, offsetQuery)
 
 	list := make([]menu.AdminGetList, 0)
 
@@ -83,11 +87,10 @@ func (r Repository) AdminGetList(ctx context.Context, filter menu.Filter) ([]men
 	}
 
 	countQuery := fmt.Sprintf(`SELECT
-			count(fc.id)
+			count(mc.id)
 		FROM
-		    food_category fc
-		JOIN foods f ON f.category_id = fc.id
-		JOIN menus m ON m.food_id = f.id
+		    menu_categories mc
+		JOIN menus m ON m.menu_category_id = mc.id
 		%s`, countWhereQuery)
 	countRows, err := r.QueryContext(ctx, countQuery)
 
@@ -134,6 +137,18 @@ func (r Repository) AdminGetDetail(ctx context.Context, id int64) (entity.Menu, 
 	if err != nil {
 		return entity.Menu{}, err
 	}
+
+	if detail.Photos != nil {
+		var photos pq.StringArray
+
+		for _, i := range *detail.Photos {
+			photo := hashing.GenerateHash(r.ServerBaseUrl, i)
+			photos = append(photos, photo)
+		}
+
+		detail.Photos = &photos
+	}
+
 	return detail, nil
 }
 
@@ -148,15 +163,57 @@ func (r Repository) AdminCreate(ctx context.Context, request menu.AdminCreateReq
 		return nil, err
 	}
 
+	if len(request.FoodID) == 1 {
+		var name, photos string
+
+		if request.Name == nil || request.Photos == nil {
+			query := fmt.Sprintf(`select name, photos from foods where id='%d'`, request.FoodID[0])
+			if err = r.QueryRowContext(ctx, query).Scan(&name, &photos); err != nil {
+				return nil, err
+			}
+
+			if request.Name == nil {
+				request.Name = &name
+			}
+			if request.Photos == nil {
+				request.PhotosLink = &photos
+			}
+		}
+	} else {
+		var total float64
+		for i := range request.FoodID {
+			var price float64
+			priceQ := fmt.Sprintf(`select price from foods where id='%d'`, request.FoodID[i])
+
+			if err = r.QueryRowContext(ctx, priceQ).Scan(&price); err != nil {
+				return nil, err
+			}
+
+			total += price
+		}
+
+		request.OldPrice = &total
+	}
+
+	if request.Name == nil || request.PhotosLink == nil || len(request.FoodID) < 1 {
+		err = errors.New("food_id, name and photos required fields")
+		return nil, web.NewRequestError(err, http.StatusBadRequest)
+	}
+
 	var response []menu.AdminCreateResponse
 	if len(request.BranchID) > 0 {
 		for i := range request.BranchID {
 			detail := menu.AdminCreateResponse{
-				FoodID:      request.FoodID,
-				NewPrice:    request.NewPrice,
-				CreatedAt:   time.Now(),
-				CreatedBy:   claims.UserId,
-				Description: request.Description,
+				FoodID:         request.FoodID,
+				NewPrice:       request.NewPrice,
+				CreatedAt:      time.Now(),
+				CreatedBy:      claims.UserId,
+				Description:    request.Description,
+				CategoryID:     request.CategoryID,
+				MenuCategoryID: request.MenuCategoryID,
+				Name:           request.Name,
+				PhotosLink:     request.PhotosLink,
+				OldPrice:       request.OldPrice,
 			}
 			detail.BranchID = &request.BranchID[i]
 
@@ -186,18 +243,32 @@ func (r Repository) AdminUpdateAll(ctx context.Context, request menu.AdminUpdate
 
 	q := r.NewUpdate().Table("menus").Where(`deleted_at IS NULL AND id = ? AND branch_id in (select id from branches where restaurant_id = ?)`, request.ID, claims.RestaurantID)
 
-	q.Set("food_id = ?", request.FoodID)
+	q.Set("food_ids = ?", request.FoodID)
 	q.Set("old_price = new_price")
+	q.Set("menu_category_id = ?", request.MenuCategoryID)
 	q.Set("new_price = ?", request.NewPrice)
 	q.Set("branch_id = ?", request.BranchID)
 	q.Set("status = ?", request.Status)
 	q.Set("updated_at = ?", time.Now())
 	q.Set("updated_by = ?", claims.UserId)
 	q.Set("description = ?", request.Description)
+	q.Set("category_id = ?", request.CategoryID)
+	q.Set("name = ?", request.Name)
+	q.Set("photos = array_cat(photos, ?)", request.PhotosLink)
 
 	_, err = q.Exec(ctx)
 	if err != nil {
 		return web.NewRequestError(errors.Wrap(err, "updating menu"), http.StatusBadRequest)
+	}
+
+	if request.Status != nil || request.BranchID != nil {
+		_, err = r.ExecContext(ctx, fmt.Sprintf(`
+			UPDATE branches
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		WHERE restaurant_id = '%d'`, *claims.RestaurantID))
+		if err != nil {
+			return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
+		}
 	}
 
 	return nil
@@ -217,10 +288,13 @@ func (r Repository) AdminUpdateColumns(ctx context.Context, request menu.AdminUp
 		"AND branch_id in (select id from branches where restaurant_id = ?)", request.ID, claims.RestaurantID)
 
 	if request.FoodID != nil {
-		q.Set("food_id = ?", request.FoodID)
+		q.Set("food_ids = ?", request.FoodID)
 	}
 	if request.BranchID != nil {
 		q.Set("branch_id = ?", request.BranchID)
+	}
+	if request.MenuCategoryID != nil {
+		q.Set("menu_category_id = ?", request.MenuCategoryID)
 	}
 	if request.Status != nil {
 		q.Set("status = ?", request.Status)
@@ -231,6 +305,15 @@ func (r Repository) AdminUpdateColumns(ctx context.Context, request menu.AdminUp
 	}
 	if request.Description != nil {
 		q.Set("description = ?", request.Description)
+	}
+	if request.Name != nil {
+		q.Set("name = ?", request.Name)
+	}
+	if request.PhotosLink != nil {
+		q.Set("photos = array_cat(photos, ?)", request.PhotosLink)
+	}
+	if request.CategoryID != nil {
+		q.Set("category_id = ?", request.CategoryID)
 	}
 
 	q.Set("updated_at = ?", time.Now())
@@ -244,8 +327,8 @@ func (r Repository) AdminUpdateColumns(ctx context.Context, request menu.AdminUp
 	if request.Status != nil || request.BranchID != nil {
 		_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
-    		WHERE restaurant_id = %d`, *claims.RestaurantID))
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		WHERE restaurant_id = '%d'`, *claims.RestaurantID))
 		if err != nil {
 			return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
 		}
@@ -267,12 +350,44 @@ func (r Repository) AdminDelete(ctx context.Context, id int64) error {
 
 	_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
-    		WHERE restaurant_id = %d`, *claims.RestaurantID))
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		WHERE restaurant_id = '%d'`, *claims.RestaurantID))
 	if err != nil {
 		return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
 	}
 	return nil
+}
+
+func (r Repository) AdminRemovePhoto(ctx context.Context, id int64, index *int) (*string, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if index != nil {
+		imageIndex := 0
+		if *index <= 0 {
+			imageIndex = 1
+		} else {
+			imageIndex = *index + 1
+		}
+		var photo *string
+		photoSelect := fmt.Sprintf(`SELECT photos['%d'] FROM menus WHERE id = '%d' AND (select restaurant_id from menu_categories mc where mc.id = menus.menu_category_id) = '%d'`, imageIndex, id, *claims.RestaurantID)
+		if err = r.QueryRowContext(ctx, photoSelect).Scan(&photo); err != nil {
+			return nil, err
+		}
+
+		if photo != nil {
+			query := fmt.Sprintf(`UPDATE menus SET photos = array_remove(photos, '%s') WHERE id = '%d' AND (select restaurant_id from menu_categories mc where mc.id = menus.menu_category_id) = '%d'`, *photo, id, *claims.RestaurantID)
+			if _, err = r.ExecContext(ctx, query); err != nil {
+				return nil, err
+			}
+
+			return nil, nil
+		}
+	}
+	err = errors.New("photo not found")
+	return nil, web.NewRequestError(err, http.StatusBadRequest)
 }
 
 // @branch
@@ -283,7 +398,7 @@ func (r Repository) BranchGetList(ctx context.Context, filter menu.Filter) ([]me
 		return nil, 0, err
 	}
 
-	whereQuery := fmt.Sprintf(`WHERE fc.deleted_at IS NULL AND m.deleted_at IS NULL and m.branch_id = '%d'`, *claims.BranchID)
+	whereQuery := fmt.Sprintf(`WHERE mc.deleted_at IS NULL AND m.deleted_at IS NULL and m.branch_id = '%d'`, *claims.BranchID)
 	if filter.PrinterID != nil {
 		whereQuery += fmt.Sprintf(" AND m.printer_id = %d", *filter.PrinterID)
 	}
@@ -322,15 +437,14 @@ func (r Repository) BranchGetList(ctx context.Context, filter menu.Filter) ([]me
 	//`, whereQuery)
 
 	query := fmt.Sprintf(`SELECT 
-					fc.id AS category_id, 
-					fc.name AS category_name, 
-					json_agg(json_build_object('id', m.id, 'name', f.name, 'photos', f.photos, 'price', m.new_price, 'status', m.status, 'printer', CASE WHEN m.printer_id is null THEN false ELSE true END )) AS menus
+					mc.id AS category_id, 
+					mc.name AS category_name, 
+					json_agg(json_build_object('id', m.id, 'name', m.name, 'photos', m.photos, 'price', m.new_price, 'status', m.status)) AS menus
 				FROM 
-					food_category fc
-				JOIN foods f ON f.category_id = fc.id
-				JOIN menus m ON m.food_id = f.id
+					menu_categories mc
+				JOIN menus m ON m.menu_category_id = mc.id
 				%s 
-				GROUP BY fc.id, fc.name ORDER BY fc.name %s %s;`, whereQuery, limitQuery, offsetQuery)
+				GROUP BY mc.id, mc.name ORDER BY mc.name %s %s`, whereQuery, limitQuery, offsetQuery)
 
 	list := make([]menu.BranchGetList, 0)
 
@@ -362,9 +476,8 @@ func (r Repository) BranchGetList(ctx context.Context, filter menu.Filter) ([]me
 		SELECT
 			count(m.id)
 		FROM
-		    food_category fc
-		JOIN foods f ON f.category_id = fc.id
-		JOIN menus m ON m.food_id = f.id
+		    menu_categories mc
+		JOIN menus m ON m.menu_category_id = mc.id
 		%s
 	`, countWhereQuery)
 	countRows, err := r.QueryContext(ctx, countQuery)
@@ -397,6 +510,18 @@ func (r Repository) BranchGetDetail(ctx context.Context, id int64) (entity.Menu,
 	if err != nil {
 		return entity.Menu{}, err
 	}
+
+	if detail.Photos != nil {
+		var photos pq.StringArray
+
+		for _, i := range *detail.Photos {
+			photo := hashing.GenerateHash(r.ServerBaseUrl, i)
+			photos = append(photos, photo)
+		}
+
+		detail.Photos = &photos
+	}
+
 	return detail, nil
 }
 
@@ -406,18 +531,60 @@ func (r Repository) BranchCreate(ctx context.Context, request menu.BranchCreateR
 		return menu.BranchCreateResponse{}, err
 	}
 
-	err = r.ValidateStruct(&request, "FoodID", "Status", "New_Price")
+	err = r.ValidateStruct(&request, "FoodID", "Status", "NewPrice")
 	if err != nil {
 		return menu.BranchCreateResponse{}, err
 	}
 
+	if len(request.FoodID) == 1 {
+		var name, photos string
+
+		if request.Name == nil || request.Photos == nil {
+			query := fmt.Sprintf(`select name, photos from foods where id='%d'`, request.FoodID[0])
+			if err = r.QueryRowContext(ctx, query).Scan(&name, &photos); err != nil {
+				return menu.BranchCreateResponse{}, err
+			}
+
+			if request.Name == nil {
+				request.Name = &name
+			}
+			if request.Photos == nil {
+				request.PhotosLink = &photos
+			}
+		}
+	} else {
+		var total float64
+		for i := range request.FoodID {
+			var price float64
+			priceQ := fmt.Sprintf(`select price from foods where id='%d'`, request.FoodID[i])
+
+			if err = r.QueryRowContext(ctx, priceQ).Scan(&price); err != nil {
+				return menu.BranchCreateResponse{}, err
+			}
+
+			total += price
+		}
+
+		request.OldPrice = &total
+	}
+
+	if request.Name == nil || request.PhotosLink == nil || len(request.FoodID) < 1 {
+		err = errors.New("food_id, name and photos required fields")
+		return menu.BranchCreateResponse{}, web.NewRequestError(err, http.StatusBadRequest)
+	}
+
 	response := menu.BranchCreateResponse{
-		FoodID:      request.FoodID,
-		NewPrice:    request.NewPrice,
-		CreatedAt:   time.Now(),
-		CreatedBy:   claims.UserId,
-		BranchID:    claims.BranchID,
-		Description: request.Description,
+		FoodID:         request.FoodID,
+		NewPrice:       request.NewPrice,
+		CreatedAt:      time.Now(),
+		CreatedBy:      claims.UserId,
+		BranchID:       claims.BranchID,
+		Description:    request.Description,
+		CategoryID:     request.CategoryID,
+		MenuCategoryID: request.MenuCategoryID,
+		Name:           request.Name,
+		PhotosLink:     request.PhotosLink,
+		OldPrice:       request.OldPrice,
 	}
 
 	_, err = r.NewInsert().Model(&response).Exec(ctx)
@@ -443,13 +610,16 @@ func (r Repository) BranchUpdateAll(ctx context.Context, request menu.BranchUpda
 	q := r.NewUpdate().Table("menus").Where("deleted_at IS NULL AND id = ? AND branch_id = ?",
 		request.ID, claims.BranchID)
 
-	q.Set("food_id = ?", request.FoodID)
+	q.Set("food_ids = ?", request.FoodID)
 	q.Set("old_price = new_price")
+	q.Set("menu_category_id = ?", request.MenuCategoryID)
 	q.Set("new_price = ?", request.NewPrice)
 	q.Set("status = ?", request.Status)
 	q.Set("updated_at = ?", time.Now())
 	q.Set("updated_by = ?", claims.UserId)
 	q.Set("description = ?", request.Description)
+	q.Set("photos = array_cat(photos, ?)", request.PhotosLink)
+	q.Set("name = ?", request.Name)
 
 	_, err = q.Exec(ctx)
 	if err != nil {
@@ -473,7 +643,7 @@ func (r Repository) BranchUpdateColumns(ctx context.Context, request menu.Branch
 		request.ID, claims.BranchID)
 
 	if request.FoodID != nil {
-		q.Set("food_id = ?", request.FoodID)
+		q.Set("food_ids = ?", request.FoodID)
 	}
 	if request.NewPrice != nil {
 		q.Set("old_price = new_price")
@@ -484,6 +654,18 @@ func (r Repository) BranchUpdateColumns(ctx context.Context, request menu.Branch
 	}
 	if request.Description != nil {
 		q.Set("description = ?", request.Description)
+	}
+	if request.MenuCategoryID != nil {
+		q.Set("menu_category_id = ?", request.MenuCategoryID)
+	}
+	if request.Name != nil {
+		q.Set("name = ?", request.Name)
+	}
+	if request.PhotosLink != nil {
+		q.Set("photos = array_cat(photos, ?)", request.PhotosLink)
+	}
+	if request.CategoryID != nil {
+		q.Set("category_id = ?", request.CategoryID)
 	}
 
 	q.Set("updated_at = ?", time.Now())
@@ -497,7 +679,7 @@ func (r Repository) BranchUpdateColumns(ctx context.Context, request menu.Branch
 	if request.Status != nil {
 		_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
     		WHERE id = %d`, *claims.BranchID))
 		if err != nil {
 			return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
@@ -518,7 +700,7 @@ func (r Repository) BranchDelete(ctx context.Context, id int64) error {
 	}
 	_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
     		WHERE id = %d`, *claims.BranchID))
 	if err != nil {
 		return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
@@ -557,6 +739,35 @@ func (r Repository) BranchDeletePrinterID(ctx context.Context, menuID int64) err
 	return nil
 }
 
+func (r Repository) BranchRemovePhoto(ctx context.Context, id int64, index int) (*string, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	if index <= 1 {
+		index = 1
+	}
+
+	var photo *string
+	photoSelect := fmt.Sprintf(`SELECT photos['%d'] FROM menus WHERE id = '%d' AND branch_id = '%d'`, index, id, *claims.BranchID)
+	if err = r.QueryRowContext(ctx, photoSelect).Scan(&photo); err != nil {
+		return nil, err
+	}
+
+	if photo != nil {
+		query := fmt.Sprintf(`UPDATE menus SET photos = array_remove(photos, '%s') WHERE id = '%d' AND branch_id = '%d'`, *photo, id, *claims.BranchID)
+		if _, err = r.ExecContext(ctx, query); err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	}
+
+	err = errors.New("photo not found")
+	return nil, web.NewRequestError(err, http.StatusBadRequest)
+}
+
 // @client
 
 func (r Repository) ClientGetList(ctx context.Context, filter menu.Filter) ([]menu.ClientGetList, error) {
@@ -565,14 +776,14 @@ func (r Repository) ClientGetList(ctx context.Context, filter menu.Filter) ([]me
 	//	return nil, err
 	//}
 
-	whereQuery := fmt.Sprintf(`WHERE f.deleted_at IS NULL AND fc.deleted_at IS NULL AND m.status = 'active' AND m.deleted_at IS NULL`)
+	whereQuery := fmt.Sprintf(`WHERE m.deleted_at IS NULL AND mc.deleted_at IS NULL AND m.status = 'active' AND m.deleted_at IS NULL`)
 
 	if filter.Search != nil {
 		search := strings.Replace(*filter.Search, " ", "", -1)
 		whereQuery += fmt.Sprintf(` AND 
 			(
-				REPLACE(f.name, ' ', '') ilike '%s' OR
-				REPLACE(fc.name, ' ', '') ilike '%s'
+				REPLACE(m.name, ' ', '') ilike '%s' OR
+				REPLACE(mc.name, ' ', '') ilike '%s'
 				
 			)`,
 			"%"+search+"%",
@@ -581,23 +792,19 @@ func (r Repository) ClientGetList(ctx context.Context, filter menu.Filter) ([]me
 	}
 
 	if filter.BranchID != nil {
-		whereQuery += fmt.Sprintf(` and f.branch_id = '%d'`, *filter.BranchID)
+		whereQuery += fmt.Sprintf(` and m.branch_id = '%d'`, *filter.BranchID)
 	}
 
 	query := fmt.Sprintf(`
 				SELECT 
-					fc.id AS category_id, 
-					fc.name AS category_name, 
-					json_agg(json_build_object('id', m.id, 'name', f.name, 'photos', f.photos, 'price', m.new_price)) AS menus
+					mc.id AS category_id, 
+					mc.name AS category_name, 
+					json_agg(json_build_object('id', m.id, 'name', m.name, 'photos', m.photos, 'price', m.new_price)) AS menus
 				FROM 
-					food_category fc
-				JOIN 
-					foods f ON f.category_id = fc.id
-				JOIN
-					menus m ON m.food_id = f.id
-				%s
-				GROUP BY 
-					fc.id, fc.name;
+					menu_categories mc
+				JOIN menus m ON m.menu_category_id = mc.id
+				%s 
+				GROUP BY mc.id, mc.name ORDER BY mc.name
 	`, whereQuery)
 
 	list := make([]menu.ClientGetList, 0)
@@ -672,11 +879,10 @@ func (r Repository) ClientGetDetail(ctx context.Context, id int64) (menu.ClientG
 	query := fmt.Sprintf(`
 			SELECT
 				menus.id,
-				foods.name,
-				foods.photos,
+				menus.name,
+				menus.photos,
 				menus.new_price
-			FROM foods
-			LEFT JOIN menus ON foods.id = menus.food_id
+			FROM menus
 			%s
 	`, whereQuery)
 
@@ -768,8 +974,7 @@ func (r Repository) ClientGetListByCategoryID(ctx context.Context, foodCategoryI
 				    branches AS b
 				LEFT OUTER JOIN restaurant_category AS rc ON rc.id = b.category_id
 				LEFT OUTER JOIN menus m ON m.branch_id = b.id
-				LEFT OUTER JOIN foods f ON f.id = m.food_id
-				LEFT OUTER JOIN food_category fc ON fc.id = f.category_id
+				LEFT OUTER JOIN menu_categories fc ON fc.id = m.menu_category_id
 				%s
 				GROUP BY b.id, b.status, b.location, rc.name,b.photos, b.name, b.category_id, b.rate
 				%s
@@ -875,11 +1080,10 @@ func (r Repository) CashierGetList(ctx context.Context, filter menu.Filter) ([]m
 	query := fmt.Sprintf(`SELECT 
 					fc.id AS category_id, 
 					fc.name AS category_name, 
-					json_agg(json_build_object('id', m.id, 'name', f.name, 'photos', f.photos, 'price', m.new_price, 'status', m.status, 'printer', CASE WHEN m.printer_id is null THEN false ELSE true END )) AS menus
+					json_agg(json_build_object('id', m.id, 'name', m.name, 'photos', m.photos, 'price', m.new_price, 'status', m.status, 'printer', CASE WHEN m.printer_id is null THEN false ELSE true END )) AS menus
 				FROM 
-					food_category fc
-				JOIN foods f ON f.category_id = fc.id
-				JOIN menus m ON m.food_id = f.id
+					menu_categories fc
+				JOIN menus m ON m.menu_category_id = fc.id
 				%s 
 				GROUP BY fc.id, fc.name ORDER BY fc.name %s %s;`, whereQuery, limitQuery, offsetQuery)
 
@@ -913,9 +1117,8 @@ func (r Repository) CashierGetList(ctx context.Context, filter menu.Filter) ([]m
 		SELECT
 			count(m.id)
 		FROM
-		    food_category fc
-		JOIN foods f ON f.category_id = fc.id
-		JOIN menus m ON m.food_id = f.id
+		    menu_categories fc
+		JOIN menus m ON m.menu_category_id = fc.id
 		%s
 	`, countWhereQuery)
 	countRows, err := r.QueryContext(ctx, countQuery)
@@ -948,6 +1151,18 @@ func (r Repository) CashierGetDetail(ctx context.Context, id int64) (entity.Menu
 	if err != nil {
 		return entity.Menu{}, err
 	}
+
+	if detail.Photos != nil {
+		var photos pq.StringArray
+
+		for _, i := range *detail.Photos {
+			photo := hashing.GenerateHash(r.ServerBaseUrl, i)
+			photos = append(photos, photo)
+		}
+
+		detail.Photos = &photos
+	}
+
 	return detail, nil
 }
 
@@ -957,18 +1172,60 @@ func (r Repository) CashierCreate(ctx context.Context, request menu.CashierCreat
 		return menu.CashierCreateResponse{}, err
 	}
 
-	err = r.ValidateStruct(&request, "FoodID", "Status", "New_Price")
+	err = r.ValidateStruct(&request, "FoodID", "Status", "NewPrice")
 	if err != nil {
 		return menu.CashierCreateResponse{}, err
 	}
 
+	if len(request.FoodID) == 1 {
+		var name, photos string
+
+		if request.Name == nil || request.Photos == nil {
+			query := fmt.Sprintf(`select name, photos from foods where id='%d'`, request.FoodID[0])
+			if err = r.QueryRowContext(ctx, query).Scan(&name, &photos); err != nil {
+				return menu.CashierCreateResponse{}, err
+			}
+
+			if request.Name == nil {
+				request.Name = &name
+			}
+			if request.Photos == nil {
+				request.PhotosLink = &photos
+			}
+		}
+	} else {
+		var total float64
+		for i := range request.FoodID {
+			var price float64
+			priceQ := fmt.Sprintf(`select price from foods where id='%d'`, request.FoodID[i])
+
+			if err = r.QueryRowContext(ctx, priceQ).Scan(&price); err != nil {
+				return menu.CashierCreateResponse{}, err
+			}
+
+			total += price
+		}
+
+		request.OldPrice = &total
+	}
+
+	if request.Name == nil || request.PhotosLink == nil || len(request.FoodID) < 1 {
+		err = errors.New("food_id, name and photos required fields")
+		return menu.CashierCreateResponse{}, web.NewRequestError(err, http.StatusBadRequest)
+	}
+
 	response := menu.CashierCreateResponse{
-		FoodID:      request.FoodID,
-		NewPrice:    request.NewPrice,
-		CreatedAt:   time.Now(),
-		CreatedBy:   claims.UserId,
-		BranchID:    claims.BranchID,
-		Description: request.Description,
+		FoodID:         request.FoodID,
+		NewPrice:       request.NewPrice,
+		CreatedAt:      time.Now(),
+		CreatedBy:      claims.UserId,
+		BranchID:       claims.BranchID,
+		Description:    request.Description,
+		OldPrice:       request.OldPrice,
+		PhotosLink:     request.PhotosLink,
+		Name:           request.Name,
+		CategoryID:     request.CategoryID,
+		MenuCategoryID: request.MenuCategoryID,
 	}
 
 	_, err = r.NewInsert().Model(&response).Exec(ctx)
@@ -994,13 +1251,17 @@ func (r Repository) CashierUpdateAll(ctx context.Context, request menu.CashierUp
 	q := r.NewUpdate().Table("menus").Where("deleted_at IS NULL AND id = ? AND branch_id = ?",
 		request.ID, claims.BranchID)
 
-	q.Set("food_id = ?", request.FoodID)
+	q.Set("food_ids = ?", request.FoodID)
 	q.Set("old_price = new_price")
 	q.Set("new_price = ?", request.NewPrice)
 	q.Set("status = ?", request.Status)
 	q.Set("updated_at = ?", time.Now())
 	q.Set("updated_by = ?", claims.UserId)
 	q.Set("description = ?", request.Description)
+	q.Set("photos = array_cat(photos, ?)", request.PhotosLink)
+	q.Set("name = ?", request.Name)
+	q.Set("menu_category_id = ?", request.MenuCategoryID)
+	q.Set("category_id = ?", request.CategoryID)
 
 	_, err = q.Exec(ctx)
 	if err != nil {
@@ -1024,7 +1285,7 @@ func (r Repository) CashierUpdateColumn(ctx context.Context, request menu.Cashie
 		request.ID, claims.BranchID)
 
 	if request.FoodID != nil {
-		q.Set("food_id = ?", request.FoodID)
+		q.Set("food_ids = ?", request.FoodID)
 	}
 	if request.NewPrice != nil {
 		q.Set("old_price = new_price")
@@ -1036,7 +1297,18 @@ func (r Repository) CashierUpdateColumn(ctx context.Context, request menu.Cashie
 	if request.Description != nil {
 		q.Set("description = ?", request.Description)
 	}
-
+	if request.MenuCategoryID != nil {
+		q.Set("menu_category_id = ?", request.MenuCategoryID)
+	}
+	if request.Name != nil {
+		q.Set("name = ?", request.Name)
+	}
+	if request.PhotosLink != nil {
+		q.Set("photos = array_cat(photos, ?)", request.PhotosLink)
+	}
+	if request.CategoryID != nil {
+		q.Set("category_id = ?", request.CategoryID)
+	}
 	q.Set("updated_at = ?", time.Now())
 	q.Set("updated_by = ?", claims.UserId)
 
@@ -1048,8 +1320,8 @@ func (r Repository) CashierUpdateColumn(ctx context.Context, request menu.Cashie
 	if request.Status != nil {
 		_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
-    		WHERE id = %d`, *claims.BranchID))
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		WHERE id = '%d'`, *claims.BranchID))
 		if err != nil {
 			return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
 		}
@@ -1069,7 +1341,7 @@ func (r Repository) CashierDelete(ctx context.Context, id int64) error {
 	}
 	_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
     		WHERE id = %d`, *claims.BranchID))
 	if err != nil {
 		return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
@@ -1108,6 +1380,35 @@ func (r Repository) CashierDeletePrinterID(ctx context.Context, menuID int64) er
 	return nil
 }
 
+func (r Repository) CashierRemovePhoto(ctx context.Context, id int64, index int) (*string, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleCashier)
+	if err != nil {
+		return nil, err
+	}
+
+	if index <= 1 {
+		index = 1
+	}
+
+	var photo *string
+	photoSelect := fmt.Sprintf(`SELECT photos['%d'] FROM menus WHERE id = '%d' AND branch_id = '%d'`, index, id, *claims.BranchID)
+	if err = r.QueryRowContext(ctx, photoSelect).Scan(&photo); err != nil {
+		return nil, err
+	}
+
+	if photo != nil {
+		query := fmt.Sprintf(`UPDATE menus SET photos = array_remove(photos, '%s') WHERE id = '%d' AND branch_id = '%d'`, *photo, id, *claims.BranchID)
+		if _, err = r.ExecContext(ctx, query); err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	}
+
+	err = errors.New("photo not found")
+	return nil, web.NewRequestError(err, http.StatusBadRequest)
+}
+
 // @waiter
 
 func (r Repository) WaiterGetMenuList(ctx context.Context, filter menu.Filter) ([]menu.WaiterGetMenuListResponse, error) {
@@ -1116,12 +1417,12 @@ func (r Repository) WaiterGetMenuList(ctx context.Context, filter menu.Filter) (
 		return nil, err
 	}
 
-	fltr := fmt.Sprintf(` AND m.deleted_at isnull AND m.branch_id='%d' AND f.deleted_at isnull `, *claims.BranchID)
+	fltr := fmt.Sprintf(` AND m.deleted_at isnull AND m.branch_id='%d' AND m.deleted_at isnull `, *claims.BranchID)
 	if filter.Search != nil {
-		fltr += fmt.Sprintf(` AND f.name ilike '%s'`, "%"+*filter.Search+"%")
+		fltr += fmt.Sprintf(` AND m.name ilike '%s'`, "%"+*filter.Search+"%")
 	}
 	if filter.CategoryId != nil {
-		fltr += fmt.Sprintf(` AND f.category_id='%d'`, *filter.CategoryId)
+		fltr += fmt.Sprintf(` AND m.category_id='%d'`, *filter.CategoryId)
 	}
 
 	response := make([]menu.WaiterGetMenuListResponse, 0)
@@ -1130,11 +1431,12 @@ func (r Repository) WaiterGetMenuList(ctx context.Context, filter menu.Filter) (
 								fc.id,
 								fc.name
 						  FROM 
-						  		food_category fc
+						  		menu_categories fc
 						  WHERE 
+						        fc.restaurant_id = (select restaurant_id from branches where id = '%d') 
+						    		AND 
 						  		fc.deleted_at isnull 
-									AND
-								(select count(m.id) from menus m join foods f on f.id = m.food_id where f.category_id=fc.id %s) != 0`, fltr)
+						  ORDER BY fc.name`, *claims.BranchID)
 	rows, err := r.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -1149,22 +1451,24 @@ func (r Repository) WaiterGetMenuList(ctx context.Context, filter menu.Filter) (
 
 		query = fmt.Sprintf(`SELECT 
 									m.id as id, 
-									f.name as name, 
+									m.name as name, 
 									m.status as status, 
-									f.photos[1] as photo,
+									m.photos[1] as photo,
 									m.new_price as price
 							 FROM menus m 
-							 JOIN foods f 
-							 		ON f.id = m.food_id 
-							 WHERE f.category_id='%d' %s`, row.Id, fltr)
-		rows, err := r.QueryContext(ctx, query)
+							 WHERE m.menu_category_id='%d' %s ORDER BY m.name`, row.Id, fltr)
+		mRows, err := r.QueryContext(ctx, query)
 		if err != nil {
 			return nil, err
 		}
 
 		var menus []menu.WaiterMenu
-		if err = r.ScanRows(ctx, rows, &menus); err != nil {
+		if err = r.ScanRows(ctx, mRows, &menus); err != nil {
 			return nil, err
+		}
+
+		if len(menus) == 0 {
+			continue
 		}
 
 		for i := range menus {

@@ -2107,7 +2107,7 @@ func (uc Controller) WaiterGetCategoryList(c *web.Context) error {
 	}, http.StatusOK)
 }
 
-// #menu_category
+// #menu_category--------------------------------------------------------
 
 // @admin
 
@@ -2438,7 +2438,7 @@ func (uc Controller) CashierDeleteMenuCategory(c *web.Context) error {
 	}, http.StatusOK)
 }
 
-// #food_recipe_group
+// #food_recipe_group---------------------------------------------------------
 
 // @admin
 
@@ -2767,6 +2767,189 @@ func (uc Controller) BranchDeleteFoodRecipeGroup(c *web.Context) error {
 	}
 
 	err := uc.useCase.BranchDeleteFoodRecipeGroup(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+// #food_recipe_group_history---------------------------------------------------------
+
+// @admin
+
+func (uc Controller) AdminGetFoodRecipeGroupHistoryList(c *web.Context) error {
+	var filter food_recipe_group_history.Filter
+
+	if limit, ok := c.GetQueryFunc(reflect.Int, "limit").(*int); ok {
+		filter.Limit = limit
+	}
+	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
+		filter.Offset = offset
+	}
+	if foodId, ok := c.GetQueryFunc(reflect.Int, "food_id").(*int); ok {
+		filter.FoodID = foodId
+	}
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	if filter.FoodID == nil {
+		return c.RespondError(errors.New("food_id is required"))
+	}
+
+	list, count, err := uc.useCase.AdminGetFoodRecipeGroupHistoryList(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data": map[string]interface{}{
+			"results": list,
+			"count":   count,
+		},
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminGetFoodRecipeGroupHistoryDetail(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.AdminGetFoodRecipeGroupHistoryDetail(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminCreateFoodRecipeGroupHistory(c *web.Context) error {
+	var request food_recipe_group_history.AdminCreateRequest
+
+	if err := c.BindFunc(&request, "FoodId", "ProductId"); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.AdminCreateFoodRecipeGroupHistory(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) AdminDeleteFoodRecipeGroupHistory(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	err := uc.useCase.AdminDeleteFoodRecipeGroupHistory(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   "ok!",
+		"status": true,
+	}, http.StatusOK)
+}
+
+// @branch
+
+func (uc Controller) BranchGetFoodRecipeGroupHistoryList(c *web.Context) error {
+	var filter food_recipe_group_history.Filter
+
+	if limit, ok := c.GetQueryFunc(reflect.Int, "limit").(*int); ok {
+		filter.Limit = limit
+	}
+	if offset, ok := c.GetQueryFunc(reflect.Int, "offset").(*int); ok {
+		filter.Offset = offset
+	}
+	if foodId, ok := c.GetQueryFunc(reflect.Int, "food_id").(*int); ok {
+		filter.FoodID = foodId
+	}
+
+	if err := c.ValidQuery(); err != nil {
+		return c.RespondError(err)
+	}
+
+	if filter.FoodID == nil {
+		return c.RespondError(errors.New("food_id is required"))
+	}
+
+	list, count, err := uc.useCase.BranchGetFoodRecipeGroupHistoryList(c.Ctx, filter)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data": map[string]interface{}{
+			"results": list,
+			"count":   count,
+		},
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchGetFoodRecipeGroupHistoryDetail(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.BranchGetFoodRecipeGroupHistoryDetail(c.Ctx, int64(id))
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchCreateFoodRecipeGroupHistory(c *web.Context) error {
+	var request food_recipe_group_history.BranchCreateRequest
+
+	if err := c.BindFunc(&request, "FoodId", "ProductId"); err != nil {
+		return c.RespondError(err)
+	}
+
+	response, err := uc.useCase.BranchCreateFoodRecipeGroupHistory(c.Ctx, request)
+	if err != nil {
+		return c.RespondError(err)
+	}
+
+	return c.Respond(map[string]interface{}{
+		"data":   response,
+		"status": true,
+	}, http.StatusOK)
+}
+
+func (uc Controller) BranchDeleteFoodRecipeGroupHistory(c *web.Context) error {
+	id := c.GetParam(reflect.Int, "id").(int)
+
+	if err := c.ValidParam(); err != nil {
+		return c.RespondError(err)
+	}
+
+	err := uc.useCase.BranchDeleteFoodRecipeGroupHistory(c.Ctx, int64(id))
 	if err != nil {
 		return c.RespondError(err)
 	}

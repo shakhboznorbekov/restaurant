@@ -85,7 +85,7 @@ type BranchGetList struct {
 	Photos     *pq.StringArray `json:"photos"`
 	Price      *float64        `json:"price"`
 	CategoryID *int64          `json:"category_id"`
-	BranchID   *int64          `json:"branch_id"`
+	Category   *string         `json:"category"`
 }
 
 type BranchGetDetail struct {

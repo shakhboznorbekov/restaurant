@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/entity"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/pkg/utils"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/food"
-	"github.com/restaurant/internal/service/hashing"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/entity"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/pkg/utils"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/food"
+	"restu-backend/internal/service/hashing"
 	"time"
 )
 
@@ -63,6 +63,13 @@ func (r Repository) AdminGetList(ctx context.Context, filter food.Filter) ([]foo
 			%s %s %s
 `, whereQuery, limitQuery, offsetQuery)
 
+	//whereQuery += fmt.Sprintf(" %s %s", limitQuery, offsetQuery)
+
+	//query, err := utils.SelectQuery(filter.Fields, filter.Joins, &table, &whereQuery)
+	//if err != nil {
+	//	return nil, 0, errors.Wrap(err, "select query")
+	//}
+
 	list := make([]food.AdminGetList, 0)
 
 	rows, err := r.QueryContext(ctx, query)
@@ -84,7 +91,6 @@ func (r Repository) AdminGetList(ctx context.Context, filter food.Filter) ([]foo
 			count(%s.id)
 		FROM foods
 		LEFT JOIN food_category ON foods.category_id = food_category.id
-		LEFT JOIN branches ON foods.branch_id = branches.id
 		%s
 	`, table, whereQuery)
 
@@ -281,11 +287,9 @@ func (r Repository) BranchGetList(ctx context.Context, filter food.Filter) ([]fo
 		return nil, 0, err
 	}
 
-	table := "foods"
-	whereQuery := fmt.Sprintf(`WHERE %s.deleted_at IS NULL AND %s.restaurant_id in (select restaurant_id from branches where id = '%d')`, table, table, *claims.BranchID)
-	countWhereQuery := whereQuery
+	whereQuery := fmt.Sprintf(`WHERE f.deleted_at IS NULL AND f.restaurant_id in (select restaurant_id from branches where id = '%d')`, *claims.BranchID)
 	if filter.Search != nil {
-		whereQuery += fmt.Sprintf(` AND foods.name ilike '%s'`, "%"+*filter.Search+"%")
+		whereQuery += fmt.Sprintf(` AND f.name ilike '%s'`, "%"+*filter.Search+"%")
 	}
 
 	var limitQuery, offsetQuery string
@@ -296,9 +300,19 @@ func (r Repository) BranchGetList(ctx context.Context, filter food.Filter) ([]fo
 		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
 	}
 
-	whereQuery += fmt.Sprintf(" %s %s", limitQuery, offsetQuery)
-
-	query, err := utils.SelectQuery(filter.Fields, filter.Joins, &table, &whereQuery)
+	query := fmt.Sprintf(`
+		SELECT 
+		    f.id,
+		    f.name,
+		    f.price,
+		    f.photos,
+		    f.category_id,
+		    fc.name as category
+		FROM 
+		    foods AS f
+		LEFT JOIN food_category AS fc ON f.category_id = fc.id
+		%s %s %s
+`, whereQuery, limitQuery, offsetQuery)
 	if err != nil {
 		return nil, 0, errors.Wrap(err, "select query")
 	}
@@ -317,11 +331,12 @@ func (r Repository) BranchGetList(ctx context.Context, filter food.Filter) ([]fo
 
 	countQuery := fmt.Sprintf(`
 		SELECT
-			count(id)
-		FROM
-		    %s
+			count(f.id)
+		FROM 
+		    foods AS f
+		LEFT JOIN food_category AS fc ON f.category_id = fc.id
 		%s
-	`, table, countWhereQuery)
+	`, whereQuery)
 
 	countRows, err := r.QueryContext(ctx, countQuery)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -484,8 +499,8 @@ func (r Repository) BranchUpdateColumns(ctx context.Context, request food.Branch
 	if request.Name != nil {
 		_, err = r.ExecContext(ctx, fmt.Sprintf(`
 			UPDATE branches
-    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || f.name, ' ') AS aggregated_names FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
-    		WHERE id in (SELECT branch_id FROM menus WHERE food_id = %d AND status = 'active' AND deleted_at IS NULL)`, request.ID))
+    		SET menu_names = (SELECT string_agg( ' {' || text(m.id) || '} ' || m.name, ' ') AS aggregated_names FROM menus m WHERE m.branch_id = branches.id AND m.deleted_at IS NULL AND m.status = 'active')
+    		WHERE id in (SELECT branch_id FROM menus WHERE '%d' = any(food_ids) AND status = 'active' AND deleted_at IS NULL)`, request.ID))
 		if err != nil {
 			return web.NewRequestError(errors.Wrap(err, "updating branch menu_names"), http.StatusBadRequest)
 		}
@@ -532,83 +547,83 @@ func (r Repository) BranchDeleteImage(ctx context.Context, request food.AdminDel
 
 // cashier
 
-//func (r Repository) CashierGetList(ctx context.Context, filter food.Filter) ([]food.CashierGetList, int, error) {
-//	claims, err := r.CheckClaims(ctx, auth.RoleCashier)
-//	if err != nil {
-//		return nil, 0, err
-//	}
-//
-//	table := "foods"
-//	whereQuery := fmt.Sprintf(`WHERE %s.deleted_at IS NULL AND %s.restaurant_id in (select restaurant_id from branches where id = '%d')`, table, table, *claims.BranchID)
-//	countWhereQuery := whereQuery
-//	if filter.Search != nil {
-//		whereQuery += fmt.Sprintf(` AND foods.name ilike '%s'`, "%"+*filter.Search+"%")
-//	}
-//
-//	var limitQuery, offsetQuery string
-//	if filter.Limit != nil {
-//		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
-//	}
-//	if filter.Offset != nil {
-//		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
-//	}
-//
-//	whereQuery += fmt.Sprintf(" %s %s", limitQuery, offsetQuery)
-//
-//	query, err := utils.SelectQuery(filter.Fields, filter.Joins, &table, &whereQuery)
-//	if err != nil {
-//		return nil, 0, errors.Wrap(err, "select query")
-//	}
-//
-//	list := make([]food.CashierGetList, 0)
-//
-//	rows, err := r.QueryContext(ctx, query)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "select foods"), http.StatusInternalServerError)
-//	}
-//
-//	err = r.ScanRows(ctx, rows, &list)
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning foods"), http.StatusBadRequest)
-//	}
-//
-//	countQuery := fmt.Sprintf(`
-//		SELECT
-//			count(id)
-//		FROM
-//		    %s
-//		%s
-//	`, table, countWhereQuery)
-//
-//	countRows, err := r.QueryContext(ctx, countQuery)
-//	if errors.Is(err, sql.ErrNoRows) {
-//		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusBadRequest)
-//	}
-//	if err != nil {
-//		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting foods"), http.StatusInternalServerError)
-//	}
-//
-//	count := 0
-//
-//	for countRows.Next() {
-//		if err = countRows.Scan(&count); err != nil {
-//			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning user count"), http.StatusInternalServerError)
-//		}
-//	}
-//
-//	for k, v := range list {
-//		if v.Photos != nil {
-//			var photoLink pq.StringArray
-//			for _, v1 := range *v.Photos {
-//				baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
-//				photoLink = append(photoLink, baseLink)
-//			}
-//			list[k].Photos = &photoLink
-//		}
-//	}
-//
-//	return list, count, nil
-//}
+func (r Repository) CashierGetList(ctx context.Context, filter food.Filter) ([]food.CashierGetList, int, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleCashier)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	table := "foods"
+	whereQuery := fmt.Sprintf(`WHERE %s.deleted_at IS NULL AND %s.restaurant_id in (select restaurant_id from branches where id = '%d')`, table, table, *claims.BranchID)
+	countWhereQuery := whereQuery
+	if filter.Search != nil {
+		whereQuery += fmt.Sprintf(` AND foods.name ilike '%s'`, "%"+*filter.Search+"%")
+	}
+
+	var limitQuery, offsetQuery string
+	if filter.Limit != nil {
+		limitQuery = fmt.Sprintf(" LIMIT '%d'", *filter.Limit)
+	}
+	if filter.Offset != nil {
+		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
+	}
+
+	whereQuery += fmt.Sprintf(" %s %s", limitQuery, offsetQuery)
+
+	query, err := utils.SelectQuery(filter.Fields, filter.Joins, &table, &whereQuery)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "select query")
+	}
+
+	list := make([]food.CashierGetList, 0)
+
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "select foods"), http.StatusInternalServerError)
+	}
+
+	err = r.ScanRows(ctx, rows, &list)
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning foods"), http.StatusBadRequest)
+	}
+
+	countQuery := fmt.Sprintf(`
+		SELECT
+			count(id)
+		FROM
+		    %s
+		%s
+	`, table, countWhereQuery)
+
+	countRows, err := r.QueryContext(ctx, countQuery)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, web.NewRequestError(postgres.ErrNotFound, http.StatusBadRequest)
+	}
+	if err != nil {
+		return nil, 0, web.NewRequestError(errors.Wrap(err, "selecting foods"), http.StatusInternalServerError)
+	}
+
+	count := 0
+
+	for countRows.Next() {
+		if err = countRows.Scan(&count); err != nil {
+			return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning user count"), http.StatusInternalServerError)
+		}
+	}
+
+	for k, v := range list {
+		if v.Photos != nil {
+			var photoLink pq.StringArray
+			for _, v1 := range *v.Photos {
+				baseLink := hashing.GenerateHash(r.ServerBaseUrl, v1)
+				photoLink = append(photoLink, baseLink)
+			}
+			list[k].Photos = &photoLink
+		}
+	}
+
+	return list, count, nil
+}
 
 func NewRepository(DB *postgresql.Database) *Repository {
 	return &Repository{DB}

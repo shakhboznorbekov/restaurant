@@ -31,6 +31,8 @@ type Repository interface {
 	WaiterUpdate(ctx context.Context, data WaiterUpdateRequest) error
 	WaiterUpdateStatus(ctx context.Context, id int64, status string) error
 	WaiterAccept(ctx context.Context, id int64) (*WaiterAcceptOrderResponse, error)
+	WaiterGetHistoryActivityList(ctx context.Context, filter Filter) ([]HistoryActivityListResponse, int, error)
+	WaiterGetMyOrderDetail(ctx context.Context, id int64) (*WaiterGetOrderDetailResponse, error)
 
 	// others
 
@@ -39,4 +41,5 @@ type Repository interface {
 	CheckOrderIfAccepted(id int64) error
 	CancelOrder(id int64) error
 	GetWsWaiter(waiterID int64) (GetWsWaiterResponse, error)
+	OrderChecking(ctx context.Context, Time int) ([]GetWsMessageResponse, error)
 }

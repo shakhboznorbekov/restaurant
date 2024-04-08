@@ -110,7 +110,8 @@ type GetMeResponse struct {
 	Id               int64    `json:"id" bun:"id"`
 	Name             *string  `json:"name" bun:"name"`
 	Photo            *string  `json:"photo" bun:"photo"`
-	Profit           *float64 `json:"profit" bun:"profit"`
+	Profit           *float64 `json:"-" bun:"profit"`
+	ProfitResponse   *float64 `json:"profit" bun:"profit"`
 	Rating           *float32 `json:"rating" bun:"rating"`
 	OrderCount       *int     `json:"order_count" bun:"order_count"`
 	BirthDate        *string  `json:"birth_date" bun:"birth_date"`
@@ -172,6 +173,11 @@ type GetWeeklyAcceptedOrdersStatistics struct {
 	OrderCount     *int     `json:"order_count"`
 	Profit         *float64 `json:"-"`
 	ProfitResponse *float64 `json:"-"`
+}
+
+type GetWeeklyRating struct {
+	Date   *string  `json:"date"`
+	Rating *float32 `json:"rating"`
 }
 
 // @cashier

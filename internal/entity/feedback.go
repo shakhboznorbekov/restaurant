@@ -8,5 +8,3 @@ type Feedback struct {
 	ID   int64             `json:"id" bun:"id,pk,autoincrement"`
 	Name map[string]string `json:"name" bun:"name"`
 }
-
-//for ----->  biror restaran, branch, yoki taomga taqriz berish

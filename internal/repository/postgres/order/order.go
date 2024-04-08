@@ -4,17 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
+	"restu-backend/foundation/web"
+	"restu-backend/internal/auth"
+	"restu-backend/internal/pkg/repository/postgresql"
+	"restu-backend/internal/repository/postgres"
+	"restu-backend/internal/service/hashing"
+	"restu-backend/internal/service/order"
+	waiter2 "restu-backend/internal/service/waiter"
+	"time"
+
 	"github.com/dariubs/percent"
 	"github.com/pkg/errors"
-	"github.com/restaurant/foundation/web"
-	"github.com/restaurant/internal/auth"
-	"github.com/restaurant/internal/pkg/repository/postgresql"
-	"github.com/restaurant/internal/repository/postgres"
-	"github.com/restaurant/internal/service/hashing"
-	"github.com/restaurant/internal/service/order"
-	waiter2 "github.com/restaurant/internal/service/waiter"
-	"net/http"
-	"time"
 )
 
 type Repository struct {
@@ -98,7 +99,7 @@ func (r *Repository) MobileListOrder(ctx context.Context, filter order.Filter) (
 					o.status,
 					TO_CHAR(o.created_at, 'DD.MM.YYYY HH24:MI') AS created_at,
 					b.name as branch_name,
-					(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull ) as price,
+					(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull and om.status != 'CANCELLED' ) as price,
 					t.branch_id
 				FROM
 					orders o
@@ -161,12 +162,17 @@ func (r *Repository) MobileDetailOrder(ctx context.Context, id int64) (order.Mob
 					    o.status,
 					    TO_CHAR(o.created_at, 'DD.MM.YYYY HH24:MI') as created_at,
 					    b.name as branch_name,
+					    b.id as branch_id,
 					    t.number,
-					    o.number
+					    o.number,
+					    w.id,
+					    w.name,
+					    w.photo
 					FROM 
 					    orders as o
 					LEFT OUTER JOIN tables as t ON t.id = o.table_id
 					LEFT OUTER JOIN	branches as b ON b.id = t.branch_id
+					JOIN users w ON w.id = o.waiter_id
 					%s`, whereQuery)
 
 	var detail order.MobileGetDetail
@@ -177,11 +183,20 @@ func (r *Repository) MobileDetailOrder(ctx context.Context, id int64) (order.Mob
 		&status,
 		&detail.CreatedAt,
 		&detail.BranchName,
+		&detail.BranchId,
 		&detail.TableNumber,
 		&detail.OrderNumber,
+		&detail.WaiterId,
+		&detail.WaiterName,
+		&detail.WaiterPhoto,
 	)
 	if err != nil {
 		return order.MobileGetDetail{}, web.NewRequestError(errors.Wrap(err, "select branches"), http.StatusInternalServerError)
+	}
+
+	if detail.WaiterPhoto != nil {
+		photo := hashing.GenerateHash(r.ServerBaseUrl, *detail.WaiterPhoto)
+		detail.WaiterPhoto = &photo
 	}
 
 	// ----------------------foods------------------------------------------------------------------
@@ -190,13 +205,12 @@ func (r *Repository) MobileDetailOrder(ctx context.Context, id int64) (order.Mob
 					SELECT
 					    m.id,
 					    of.count,
-					    f.name,
-					    m.new_price * of.count as price
+					    m.name,
+					    m.new_price as price
 					FROM
 					    order_menu as of
 					LEFT OUTER JOIN menus as m ON m.id = of.menu_id
-					LEFT OUTER JOIN foods as f ON f.id = m.food_id
-					WHERE of.deleted_at IS NULL AND of.order_id = '%d'`, detail.ID)
+					WHERE of.deleted_at IS NULL AND of.order_id = '%d' and of.status != 'CANCELLED'`, detail.ID)
 
 	menuLists := make([]order.MenuList, 0)
 	rows, err := r.QueryContext(ctx, foodQuery)
@@ -246,6 +260,7 @@ func (r *Repository) MobileCreateOrder(ctx context.Context, data order.MobileCre
 		price       float64
 		name        string
 	)
+	fmt.Println(1)
 	claims, err := r.CheckClaims(ctx, auth.RoleClient)
 	if err != nil {
 		return nil, web.NewRequestError(errors.Wrap(err, "extracting claims"), http.StatusInternalServerError)
@@ -256,6 +271,7 @@ func (r *Repository) MobileCreateOrder(ctx context.Context, data order.MobileCre
 	if err = r.QueryRowContext(ctx, checkOrderExistence).Scan(&exists); err != nil {
 		return nil, err
 	}
+	fmt.Println(2)
 	if exists {
 		err = errors.New("order already exists")
 		return nil, err
@@ -271,7 +287,7 @@ func (r *Repository) MobileCreateOrder(ctx context.Context, data order.MobileCre
 	}
 
 	//AND t.status='active'
-
+	fmt.Println(3)
 	orderNumberQuery := fmt.Sprintf(`SELECT max(o.number)
 											FROM orders o
 											JOIN tables t ON t.id = '%d'
@@ -290,7 +306,7 @@ func (r *Repository) MobileCreateOrder(ctx context.Context, data order.MobileCre
 		n := *orderNumber + 1
 		orderNumber = &n
 	}
-
+	fmt.Println(4)
 	tx, err := r.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -304,7 +320,7 @@ func (r *Repository) MobileCreateOrder(ctx context.Context, data order.MobileCre
 
 		_ = tx.Commit()
 	}()
-
+	fmt.Println(5)
 	insertOrderQuery := fmt.Sprintf(`INSERT INTO orders (table_id, user_id, created_by, number, client_count) VALUES ('%d', '%d', '%d', '%d', '%d') RETURNING id, TO_CHAR(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`, data.TableID, claims.UserId, claims.UserId, *orderNumber, data.ClientCount)
 
 	if err = tx.QueryRowContext(ctx, insertOrderQuery).Scan(&response.ID, &response.CreatedAt); err != nil {
@@ -313,13 +329,14 @@ func (r *Repository) MobileCreateOrder(ctx context.Context, data order.MobileCre
 
 	var menus []order.ResponseMenu
 
+	fmt.Println(6)
 	for _, v := range data.Menus {
 		var menu order.ResponseMenu
 		insertOrderFoodQuery := fmt.Sprintf(`INSERT INTO order_menu (count, order_id, menu_id, created_by) VALUES ('%d', '%d', '%d', '%d')`, v.Count, response.ID, v.ID, claims.UserId)
 		if _, err = tx.ExecContext(ctx, insertOrderFoodQuery); err != nil {
 			return nil, web.NewRequestError(errors.Wrap(err, "inserting order_menu"), http.StatusInternalServerError)
 		}
-
+		fmt.Println(7)
 		name, price, err = r.GetFoodPrice(ctx, v.ID, branchID)
 		if err != nil {
 			return nil, web.NewRequestError(errors.Wrap(err, "selecting price"), http.StatusInternalServerError)
@@ -437,7 +454,26 @@ func (r *Repository) CashierListOrder(ctx context.Context, filter order.Filter) 
 		return nil, 0, err
 	}
 
-	whereQuery := fmt.Sprintf(`WHERE o.deleted_at IS NULL AND t.branch_id = %d`, *claims.BranchID)
+	whereQuery := fmt.Sprintf(`WHERE o.deleted_at IS NULL AND t.branch_id = %d and o.status IN ('NEW', 'PAID') `, *claims.BranchID)
+
+	if filter.Search != nil {
+		if *filter.Search != "" {
+			whereQuery += fmt.Sprintf(` AND 
+											(w.name ilike '%s'
+										OR 
+											o.number::text ilike '%s'
+										OR 
+											t.number::text ilike '%s'
+										OR 
+											(SELECT EXISTS(SELECT 
+												m.id
+											FROM menus m
+												join order_menu om 
+													on m.id = om.menu_id
+											WHERE m.deleted_at isnull and om.order_id=o.id and m.name ilike '%s' and m.status='active')))`, "%"+*filter.Search+"%", "%"+*filter.Search+"%", "%"+*filter.Search+"%", "%"+*filter.Search+"%")
+		}
+	}
+
 	countWhereQuery := whereQuery
 
 	var limitQuery, offsetQuery string
@@ -451,7 +487,7 @@ func (r *Repository) CashierListOrder(ctx context.Context, filter order.Filter) 
 	if filter.Offset != nil {
 		offsetQuery = fmt.Sprintf(" OFFSET '%d'", *filter.Offset)
 	}
-	orderQuery := " ORDER BY o.created_at desc"
+	orderQuery := " ORDER BY o.status, o.created_at desc"
 	whereQuery += fmt.Sprintf("%s %s %s", orderQuery, limitQuery, offsetQuery)
 
 	query := fmt.Sprintf(`
@@ -462,11 +498,15 @@ func (r *Repository) CashierListOrder(ctx context.Context, filter order.Filter) 
 					t.id AS table_id,
 				    t.number  AS table_number,
 					TO_CHAR(o.created_at, 'HH24:MI | DD.MM.YYYY') as created_at,
-					(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull ) as price
+					(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull ) as price,
+					w.id as waiter_id,
+					w.photo as waiter_photo,
+					w.name as waiter_name
 				FROM 
 					orders o
 				LEFT OUTER JOIN tables as t ON t.id = o.table_id
 				LEFT OUTER JOIN	branches as b ON b.id = t.branch_id
+				JOIN users w ON w.id=o.waiter_id
 				%s
 	`, whereQuery)
 
@@ -482,12 +522,21 @@ func (r *Repository) CashierListOrder(ctx context.Context, filter order.Filter) 
 		return nil, 0, web.NewRequestError(errors.Wrap(err, "scanning orders"), http.StatusBadRequest)
 	}
 
+	for i := range list {
+		if list[i].WaiterPhoto != nil {
+			photo := hashing.GenerateHash(r.ServerBaseUrl, *list[i].WaiterPhoto)
+			list[i].WaiterPhoto = &photo
+		}
+	}
+
 	countQuery := fmt.Sprintf(`
 		SELECT
 			count(o.id)
 		FROM
-		    orders o
-		LEFT OUTER JOIN tables as t ON t.id = o.table_id
+					orders o
+				LEFT OUTER JOIN tables as t ON t.id = o.table_id
+				LEFT OUTER JOIN	branches as b ON b.id = t.branch_id
+				JOIN users w ON w.id=o.waiter_id
 		%s
 	`, countWhereQuery)
 	countRows, err := r.QueryContext(ctx, countQuery)
@@ -525,7 +574,7 @@ func (r *Repository) CashierDetailOrder(ctx context.Context, id int64) (order.Ca
 						t.id,
 				    	t.number,
 						TO_CHAR(o.created_at, 'DD.MM.YYYY HH24:MI') as created_at,
-						(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull ) as price
+						(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull AND om.status != 'CANCELLED') as price
 					FROM 
 					    orders as o
 					LEFT OUTER JOIN tables as t ON t.id = o.table_id
@@ -555,14 +604,15 @@ func (r *Repository) CashierDetailOrder(ctx context.Context, id int64) (order.Ca
 	foodQuery := fmt.Sprintf(`
 					SELECT
 					    m.id,
+					    of.id,
+					    of.status,
 					    of.count,
-					    f.name,
+					    m.name,
 					    m.new_price * of.count as price,
-					    f.photos
+					    m.photos
 					FROM
 					    order_menu as of
 					LEFT OUTER JOIN menus as m ON m.id = of.menu_id
-					LEFT OUTER JOIN foods as f ON f.id = m.food_id
 					WHERE of.deleted_at IS NULL AND of.order_id = '%d'`, detail.ID)
 
 	menuList := make([]order.MenuList, 0)
@@ -571,7 +621,21 @@ func (r *Repository) CashierDetailOrder(ctx context.Context, id int64) (order.Ca
 		return order.CashierGetDetail{}, web.NewRequestError(errors.Wrap(err, "select food_category"), http.StatusInternalServerError)
 	}
 
-	err = r.ScanRows(ctx, rows, &menuList)
+	for rows.Next() {
+		var detail order.MenuList
+		if err = rows.Scan(
+			&detail.ID,
+			&detail.OrderMenuID,
+			&detail.Status,
+			&detail.Count,
+			&detail.Name,
+			&detail.Price,
+			&detail.Photos); err != nil {
+			return order.CashierGetDetail{}, web.NewRequestError(errors.Wrap(err, "scanning menu_list"), http.StatusBadRequest)
+		}
+
+		menuList = append(menuList, detail)
+	}
 	if err != nil {
 		return order.CashierGetDetail{}, web.NewRequestError(errors.Wrap(err, "scanning food"), http.StatusBadRequest)
 	}
@@ -634,7 +698,14 @@ func (r *Repository) CashierUpdateStatus(ctx context.Context, data order.Cashier
 	}
 
 	// updating orders...
-	q := r.NewUpdate().Table("orders").Where("table_id = (SELECT t.id FROM branches as b LEFT JOIN tables as t ON t.branch_id = b.id WHERE b.id = ? AND t.id = orders.table_id) AND deleted_at isnull and status!='PAID'", claims.BranchID)
+	q := r.NewUpdate().Table("orders").Where(
+		`table_id = (SELECT t.id 
+					FROM branches as b 
+						LEFT JOIN tables as t ON t.branch_id = b.id 
+						WHERE b.id = ? 
+						AND t.id = orders.table_id) 
+						AND deleted_at isnull and status!='PAID'
+						AND id = ? `, claims.BranchID, data.Id)
 
 	// actual value...
 	if data.Status != nil {
@@ -759,9 +830,7 @@ func (r *Repository) WaiterGetList(ctx context.Context, filter order.Filter) ([]
 											FROM menus m
 												join order_menu om 
 													on m.id = om.menu_id
-												join foods f
-													on m.food_id = f.id
-											WHERE f.deleted_at isnull and om.order_id=o.id and f.name ilike '%s' and m.status='active')))`, "%"+*filter.Search+"%", "%"+*filter.Search+"%", "%"+*filter.Search+"%")
+											WHERE m.deleted_at isnull and om.order_id=o.id and m.name ilike '%s' and m.status='active')))`, "%"+*filter.Search+"%", "%"+*filter.Search+"%", "%"+*filter.Search+"%")
 	}
 	var limit, offset string
 	if filter.Limit != nil {
@@ -780,15 +849,17 @@ func (r *Repository) WaiterGetList(ctx context.Context, filter order.Filter) ([]
 										o.status, 
 										to_char(o.created_at, 'DD.MM.YYYY') as created_date,
 										to_char(o.created_at, 'HH24:MI') as created_at,
-										case when u.role='WAITER' then u.id end as waiter_id,
-										case when u.role='WAITER' then u.name end as waiter_name,
+										waiter_id as waiter_id,
+										u.name as waiter_name,
+										u.photo as waiter_photo,
+										case when o.waiter_id='%d' then true else false end as my_order,
 										case when o.waiter_id is not null then true else false end as accepted
 									 FROM orders o 
 										 join tables t 
 											 on o.table_id = t.id
 										 join users u
-											 on o.user_id = u.id
-									 %s %s %s %s`, where, orderQuery, limit, offset)
+											 on o.waiter_id = u.id
+									 %s %s %s %s`, claims.UserId, where, orderQuery, limit, offset)
 	rows, err := r.QueryContext(ctx, query)
 	if err != nil {
 		return nil, 0, err
@@ -797,28 +868,36 @@ func (r *Repository) WaiterGetList(ctx context.Context, filter order.Filter) ([]
 	response := []order.WaiterGetListResponse{}
 	for rows.Next() {
 		var row order.WaiterGetListResponse
-		if err = rows.Scan(&row.Id, &row.Number, &row.TableNumber, &row.Status, &row.CreatedDate, &row.CreatedAt, &row.WaiterId, &row.WaiterName, &row.Accepted); err != nil {
+		if err = rows.Scan(
+			&row.Id, &row.Number,
+			&row.TableNumber, &row.Status,
+			&row.CreatedDate, &row.CreatedAt,
+			&row.WaiterId, &row.WaiterName, &row.WaiterPhoto,
+			&row.MyOrder, &row.Accepted); err != nil {
 			return nil, 0, err
+		}
+
+		if row.WaiterPhoto != nil {
+			photo := hashing.GenerateHash(r.ServerBaseUrl, *row.WaiterPhoto)
+			row.WaiterPhoto = &photo
 		}
 
 		query = fmt.Sprintf(`SELECT 
     									m.id, 
     									om.count, 
-    									f.name, 
+    									m.name, 
     									m.new_price as price,
     									om.id as order_menu_id,
     									om.status as order_menu_status
 									FROM menus m
 									    join order_menu om 
 									        on m.id = om.menu_id 
-									    join foods f 
-									        on m.food_id = f.id
-									WHERE f.deleted_at isnull and om.order_id='%d' 
+									WHERE m.deleted_at isnull and om.order_id='%d' 
 									ORDER BY om.status!='NEW', om.status!='SERVED'`, row.Id)
 
 		mRows, mErr := r.QueryContext(ctx, query)
 		if mErr != nil {
-			return nil, 0, err
+			return nil, 0, mErr
 		}
 
 		var menus []order.WaiterMenu
@@ -943,30 +1022,41 @@ func (r *Repository) WaiterGetDetail(ctx context.Context, id int64) (*order.Wait
 										to_char(o.created_at, 'HH24:MI') as created_at,
 										case when u.role='WAITER' then u.id end as waiter_id,
 										case when u.role='WAITER' then u.name end as waiter_name,
+										u.photo as waiter_photo,
+										case when o.waiter_id='%d' then true else false end as my_order, 
 										o.client_count
 									 FROM orders o 
 										 join tables t 
 											 on o.table_id = t.id
 										 join users u 
-											 on o.user_id = u.id
-									 %s`, where)
-	if err = r.QueryRowContext(ctx, query).Scan(&response.Id, &response.Number, &response.TableNumber, &response.Status, &response.CreatedDate, &response.CreatedAt, &response.WaiterId, &response.WaiterName, &response.ClientCount); err != nil {
+											 on o.waiter_id = u.id
+									 %s`, claims.UserId, where)
+	if err = r.QueryRowContext(ctx, query).
+		Scan(
+			&response.Id, &response.Number,
+			&response.TableNumber, &response.Status,
+			&response.CreatedDate, &response.CreatedAt,
+			&response.WaiterId, &response.WaiterName, &response.WaiterPhoto,
+			&response.MyOrder, &response.ClientCount); err != nil {
 		return nil, err
+	}
+
+	if response.WaiterPhoto != nil {
+		photo := hashing.GenerateHash(r.ServerBaseUrl, *response.WaiterPhoto)
+		response.WaiterPhoto = &photo
 	}
 
 	query = fmt.Sprintf(`SELECT 
     									m.id, 
     									om.count, 
-    									f.name, 
+    									m.name, 
     									m.new_price as price,
     									om.id as order_menu_id,
     									om.status as order_menu_status
 									FROM menus m
 									    join order_menu om 
 									        on m.id = om.menu_id 
-									    join foods f 
-									        on m.food_id = f.id
-									WHERE f.deleted_at isnull and om.order_id='%d'
+									WHERE m.deleted_at isnull and om.order_id='%d'
 									ORDER BY om.status!='NEW', om.status!='SERVED'`, id)
 
 	mRows, mErr := r.QueryContext(ctx, query)
@@ -1110,6 +1200,130 @@ func (r *Repository) WaiterAccept(ctx context.Context, id int64) (*order.WaiterA
 	return &response, nil
 }
 
+func (r *Repository) WaiterGetHistoryActivityList(ctx context.Context, filter order.Filter) ([]order.HistoryActivityListResponse, int, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleWaiter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	where := fmt.Sprintf(` WHERE o.deleted_at isnull AND o.waiter_id='%d'`, claims.UserId)
+
+	var limit, offset string
+	if filter.Limit != nil {
+		limit = fmt.Sprintf(` LIMIT %d`, *filter.Limit)
+	}
+	if filter.Page != nil {
+		page := (*filter.Page - 1) * (*filter.Limit)
+		offset = fmt.Sprintf(` OFFSET %d`, page)
+	}
+	orderQuery := ` ORDER BY o.created_at desc `
+
+	query := fmt.Sprintf(`SELECT 
+										o.id, 
+										o.number, 
+										o.status, 
+										to_char(o.created_at, 'DD.MM.YYYY HH24:MI') as created_date
+									 FROM orders o 
+									 %s %s %s %s`, where, orderQuery, limit, offset)
+	rows, err := r.QueryContext(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	response := make([]order.HistoryActivityListResponse, 0)
+	for rows.Next() {
+		var row order.HistoryActivityListResponse
+		if err = rows.Scan(
+			&row.Id,
+			&row.OrderNumber,
+			&row.Status,
+			&row.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+
+		response = append(response, row)
+	}
+
+	var count int
+	query = fmt.Sprintf(`SELECT 
+    								count(o.id) 
+								FROM orders o 
+								%s`, where)
+	if err = r.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return nil, 0, err
+	}
+
+	return response, count, nil
+}
+
+func (r *Repository) WaiterGetMyOrderDetail(ctx context.Context, id int64) (*order.WaiterGetOrderDetailResponse, error) {
+	claims, err := r.CheckClaims(ctx, auth.RoleWaiter)
+	if err != nil {
+		return nil, err
+	}
+
+	where := fmt.Sprintf(` WHERE o.deleted_at isnull 
+							AND t.deleted_at isnull AND t.branch_id='%d' 
+							AND u.status='active' AND o.id='%d' 
+							AND o.waiter_id = '%d'`, *claims.BranchID, id, claims.UserId)
+
+	var response order.WaiterGetOrderDetailResponse
+	query := fmt.Sprintf(`SELECT 
+										o.id, 
+										o.number, 
+										t.number, 
+										o.status, 
+										o.client_count,
+										to_char(o.created_at, 'HH24:MI') as created_at
+									 FROM orders o 
+										 join tables t 
+											 on o.table_id = t.id
+										 join users u 
+											 on o.waiter_id = u.id
+									 %s`, where)
+	if err = r.QueryRowContext(ctx, query).
+		Scan(
+			&response.Id,
+			&response.Number,
+			&response.TableNumber,
+			&response.Status,
+			&response.ClientCount,
+			&response.CreatedAt); err != nil {
+		return nil, err
+	}
+
+	query = fmt.Sprintf(`SELECT 
+    									m.id, 
+    									om.count, 
+    									m.name, 
+    									m.new_price as price,
+    									om.id as order_menu_id,
+    									om.status as order_menu_status
+									FROM menus m
+									    join order_menu om 
+									        on m.id = om.menu_id 
+									WHERE m.deleted_at isnull and om.order_id='%d'`, id)
+
+	mRows, mErr := r.QueryContext(ctx, query)
+	if mErr != nil {
+		return nil, err
+	}
+
+	var menus []order.WaiterOrderMenu
+	if err = r.ScanRows(ctx, mRows, &menus); err != nil {
+		return nil, err
+	}
+
+	var total float64
+	for _, v := range menus {
+		total += v.Price * float64(v.Count)
+	}
+	response.Price = &total
+	response.Menus = menus
+
+	return &response, nil
+}
+
 // ----------others---------------------------------------------------------------------------------------------------------
 
 func (r *Repository) OrderExists(ctx context.Context, tableID int64, userID int64) (*order.MobileCreateResponse, error) {
@@ -1151,7 +1365,7 @@ func (r *Repository) OrderExists(ctx context.Context, tableID int64, userID int6
 }
 
 func (r *Repository) GetFoodPrice(ctx context.Context, menuID, branchID int64) (name string, price float64, err error) {
-	query := fmt.Sprintf(`SELECT m.new_price, f.name FROM menus m JOIN foods f ON m.food_id = f.id WHERE m.deleted_at isnull  AND m.id = '%d' AND m.branch_id = '%d'`, menuID, branchID)
+	query := fmt.Sprintf(`SELECT m.new_price, m.name FROM menus m WHERE m.deleted_at isnull  AND m.id = '%d' AND m.branch_id = '%d'`, menuID, branchID)
 	if err = r.QueryRowContext(ctx, query).Scan(&price, &name); err != nil {
 		return
 	}
@@ -1238,7 +1452,7 @@ func (r *Repository) GetWsOrderMenus(ctx context.Context, orderId int64, menus [
     										t.branch_id,
     										t.number,
     										p.ip,
-    										f.name,
+    										m.name,
     										om.count,
     										u.name,
     										m.id
@@ -1247,7 +1461,6 @@ func (r *Repository) GetWsOrderMenus(ctx context.Context, orderId int64, menus [
 											  LEFT JOIN tables t ON t.id = o.table_id
 											  LEFT JOIN order_menu om ON o.id = om.order_id
 										      LEFT JOIN menus m ON m.id = om.menu_id
-											  LEFT JOIN foods f ON f.id = m.food_id
 											  LEFT JOIN printers p ON p.id = m.printer_id                  
 										  %s`, whereQuery)
 	rows, err := r.QueryContext(ctx, query)
@@ -1326,17 +1539,47 @@ func (r *Repository) GetWsWaiter(waiterID int64) (order.GetWsWaiterResponse, err
 	return response, nil
 }
 
-//(
-//SELECT
-//EXTRACT(WEEK FROM o.created_at) AS week_number,
-//COALESCE(SUM(o.id), 0) AS order_count,
-//COALESCE(SUM(EXTRACT(EPOCH FROM (wwt.periods->>'gone_time')::timestamp - (wwt.periods->>'came_time')::timestamp) / 3600), 0) AS weekly_work_hours
-//FROM
-//waiter_work_time wwt
-//LEFT JOIN orders o ON wwt.waiter_id = o.user_id
-//WHERE
-//wwt.waiter_id = 1363
-//AND EXTRACT(WEEK FROM o.created_at) = EXTRACT(WEEK FROM CURRENT_DATE)
-//GROUP BY
-//week_number;
-//	)
+func (r *Repository) OrderChecking(ctx context.Context, Time int) ([]order.GetWsMessageResponse, error) {
+	response := make([]order.GetWsMessageResponse, 0)
+	priceQuery := fmt.Sprintf(`SELECT 
+    										t.id,
+    										t.number,
+    										o.id,
+    										o.number,
+    										b.id,
+    										b.restaurant_id,
+    										TO_CHAR(o.created_at, 'DD.MM.YYYY HH24:MI') as created_at,
+    										o.user_id,
+    										(select sum(m.new_price*om.count) from menus m join order_menu om on m.id = om.menu_id where om.order_id=o.id and om.deleted_at isnull ) as price,
+											w.id,
+											CASE WHEN now() - INTERVAL '%d min' < o.created_at THEN true ELSE false END
+										  FROM orders o
+										      JOIN tables t ON t.id = o.table_id
+										      JOIN branches b ON t.branch_id = b.id
+										      LEFT JOIN users w ON w.id = o.waiter_id
+										  WHERE o.status = 'NEW' AND o.waiter_id is null`, Time)
+	rows, err := r.QueryContext(ctx, priceQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var detail = order.GetWsMessageResponse{}
+		var status bool
+		err = rows.Scan(&detail.TableID, &detail.TableNumber, &detail.OrderID, &detail.OrderNumber, &detail.BranchId, &detail.RestaurantId, &detail.CreatedAt, &detail.UserId, &detail.Price, &detail.WaiterID, &status)
+		if err != nil {
+			return nil, web.NewRequestError(errors.Wrap(err, "get ws massage"), http.StatusInternalServerError)
+		}
+
+		if status {
+			response = append(response, detail)
+		} else {
+			_, err = r.NewUpdate().Table("orders").Where("id = ?", detail.OrderID).Set("status = 'CANCELLED'").Exec(ctx)
+			if err != nil {
+				return nil, web.NewRequestError(errors.Wrap(err, "update order status"), http.StatusInternalServerError)
+			}
+		}
+
+	}
+	return response, nil
+}
